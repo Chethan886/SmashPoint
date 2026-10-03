@@ -9,14 +9,16 @@ import {
   RotateCcw, 
   Check, 
   Flame, 
-  Users
+  X,
+  Users,
+  Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ScoreTrackerProps {
   match: MatchWithPlayers;
   onSaveScore: (matchId: string, scoreA: number, scoreB: number, winningTeam: WinningTeam) => Promise<void>;
-  onClose?: () => void;
+  onClose: () => void;
 }
 
 export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrackerProps) {
@@ -28,13 +30,13 @@ export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrack
   const triggerVictoryConfetti = () => {
     try {
       confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
+        particleCount: 100,
+        spread: 80,
+        origin: { y: 0.5 },
         colors: ['#10b981', '#3b82f6', '#f59e0b', '#ec4899'],
       });
-    } catch (e) {
-      // Confetti fallback
+    } catch {
+      // fallback
     }
   };
 
@@ -67,16 +69,14 @@ export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrack
   const handleConfirmWinner = async (chosenWinner?: WinningTeam) => {
     setIsSaving(true);
     const finalWinner = chosenWinner || (scoreA > scoreB ? 'TEAM_A' : scoreB > scoreA ? 'TEAM_B' : winner);
-    
+
     if (finalWinner !== 'PENDING') {
       triggerVictoryConfetti();
     }
 
     try {
       await onSaveScore(match.id, scoreA, scoreB, finalWinner);
-      if (onClose) {
-        setTimeout(onClose, 600);
-      }
+      setTimeout(onClose, 500);
     } finally {
       setIsSaving(false);
     }
@@ -85,275 +85,249 @@ export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrack
   const isMatchPoint = (scoreA >= 20 || scoreB >= 20) && Math.abs(scoreA - scoreB) >= 1;
 
   return (
-    <div className="bg-slate-900/90 border border-emerald-500/30 rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-blur-xl relative overflow-hidden">
-      {/* Background glow accents */}
-      <div className="absolute -top-16 -left-16 w-36 h-36 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Header */}
-      <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
-        <div className="flex items-center gap-2.5">
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+    <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col justify-between text-white p-3 sm:p-6 overflow-y-auto min-h-[100dvh]">
+      {/* Top Header Bar */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 rounded-xl text-xs font-black bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
             Round {match.round_number}
           </span>
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300">
+          <span className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-300">
             Court {match.court_number || 1}
           </span>
           {isMatchPoint && (
-            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse">
+            <span className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse">
               <Flame className="w-3.5 h-3.5" /> Match Point!
             </span>
           )}
         </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1 rounded-lg hover:bg-slate-800 transition-colors"
-          >
-            Close
-          </button>
-        )}
+
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition-colors active:scale-95"
+          aria-label="Close scoreboard"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* Teams Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative">
-        {/* VS divider for large screens */}
-        <div className="hidden md:flex absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-slate-950 border border-slate-700 items-center justify-center text-xs font-black text-slate-400 z-10 shadow-lg">
-          VS
-        </div>
-
-        {/* TEAM A */}
+      {/* Main Scoreboard: 2 Giant Team Zones */}
+      <div className="flex-1 my-3 sm:my-4 flex flex-col gap-3 justify-center max-w-2xl mx-auto w-full">
+        {/* TEAM A SECTION */}
         <div
-          className={`p-5 rounded-2xl border transition-all duration-300 ${
+          className={`flex-1 flex flex-col justify-between p-4 sm:p-5 rounded-3xl border transition-all ${
             winner === 'TEAM_A'
-              ? 'bg-gradient-to-b from-emerald-950/60 to-slate-900 border-emerald-500/60 shadow-lg shadow-emerald-900/30'
-              : 'bg-slate-950/70 border-slate-800'
+              ? 'bg-gradient-to-b from-emerald-950/70 to-slate-900 border-emerald-500/60 shadow-xl shadow-emerald-950/40'
+              : 'bg-slate-900/70 border-slate-800'
           }`}
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" /> Team A
-            </span>
+          {/* Team A Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                Team A
+              </span>
+              <div className="flex items-center gap-1.5 font-bold text-sm sm:text-base text-white">
+                <span className="truncate">{match.team_a_player1?.name || 'P1'}</span>
+                <span className="text-slate-500">&amp;</span>
+                <span className="truncate">{match.team_a_player2?.name || 'P2'}</span>
+              </div>
+            </div>
+
             {winner === 'TEAM_A' && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                <Trophy className="w-3 h-3" /> Winner
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                <Trophy className="w-3 h-3 fill-slate-950" /> Winner
               </span>
             )}
           </div>
 
-          {/* Players */}
-          <div className="space-y-1.5 mb-5">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: match.team_a_player1?.avatar_color || '#10b981' }}
-              />
-              <span className="font-bold text-white text-base">
-                {match.team_a_player1?.name || 'Player 1'}
-              </span>
-              {match.team_a_player1?.nickname && (
-                <span className="text-xs text-slate-400">({match.team_a_player1.nickname})</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: match.team_a_player2?.avatar_color || '#3b82f6' }}
-              />
-              <span className="font-bold text-white text-base">
-                {match.team_a_player2?.name || 'Player 2'}
-              </span>
-              {match.team_a_player2?.nickname && (
-                <span className="text-xs text-slate-400">({match.team_a_player2.nickname})</span>
-              )}
-            </div>
-          </div>
-
-          {/* Score Counter */}
-          <div className="flex items-center justify-center gap-3">
+          {/* Big Score & Stepper Controls */}
+          <div className="flex items-center justify-center gap-3 sm:gap-6 my-2">
             <button
               onClick={() => handleAdjust('A', -1)}
               disabled={scoreA <= 0}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-slate-200 hover:text-white transition-transform active:scale-95 shadow-md"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-800/90 active:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center text-white active:scale-90 transition-transform shadow-md"
             >
-              <Minus className="w-5 h-5" />
+              <Minus className="w-6 h-6 stroke-[3]" />
             </button>
 
-            <input
-              type="number"
-              min={0}
-              value={scoreA}
-              onChange={(e) => setScoreA(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-24 h-16 text-center text-4xl font-extrabold font-mono bg-slate-950/80 rounded-2xl border border-slate-700 focus:border-emerald-500 text-white focus:outline-none"
-            />
+            {/* Giant Score Tap Area */}
+            <div
+              onClick={() => handleAdjust('A', 1)}
+              className="flex-1 max-w-[180px] h-20 sm:h-24 rounded-2xl bg-slate-950/90 border border-slate-800 flex items-center justify-center cursor-pointer select-none active:scale-95 transition-transform"
+              title="Tap to add point"
+            >
+              <span className="text-5xl sm:text-6xl font-black font-mono text-emerald-400 tracking-tight">
+                {scoreA}
+              </span>
+            </div>
 
             <button
               onClick={() => handleAdjust('A', 1)}
-              className="w-12 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center text-white transition-transform active:scale-95 shadow-lg shadow-emerald-600/30"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-600 active:bg-emerald-500 flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg shadow-emerald-600/30"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-7 h-7 stroke-[3]" />
             </button>
           </div>
 
-          <div className="mt-4 flex justify-center">
+          <div className="flex justify-end">
             <button
+              type="button"
               onClick={() => setWinner('TEAM_A')}
-              className={`w-full py-2 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
+              className={`text-xs px-3 py-1 rounded-xl font-bold transition-colors ${
                 winner === 'TEAM_A'
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold'
-                  : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-emerald-500/50 hover:text-white'
+                  ? 'text-emerald-300 bg-emerald-500/20 border border-emerald-500/40'
+                  : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
               }`}
             >
-              <Trophy className="w-3.5 h-3.5" />
-              {winner === 'TEAM_A' ? 'Marked as Winner' : 'Mark Team A as Winner'}
+              {winner === 'TEAM_A' ? '✓ Winner Selected' : 'Mark Team A Winner'}
             </button>
           </div>
         </div>
 
-        {/* TEAM B */}
+        {/* Court Net Divider */}
+        <div className="flex items-center justify-center py-0.5">
+          <div className="h-[1px] bg-slate-800 flex-1" />
+          <span className="px-3 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+            🏸 COURT NET
+          </span>
+          <div className="h-[1px] bg-slate-800 flex-1" />
+        </div>
+
+        {/* TEAM B SECTION */}
         <div
-          className={`p-5 rounded-2xl border transition-all duration-300 ${
+          className={`flex-1 flex flex-col justify-between p-4 sm:p-5 rounded-3xl border transition-all ${
             winner === 'TEAM_B'
-              ? 'bg-gradient-to-b from-teal-950/60 to-slate-900 border-teal-500/60 shadow-lg shadow-teal-900/30'
-              : 'bg-slate-950/70 border-slate-800'
+              ? 'bg-gradient-to-b from-teal-950/70 to-slate-900 border-teal-500/60 shadow-xl shadow-teal-950/40'
+              : 'bg-slate-900/70 border-slate-800'
           }`}
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" /> Team B
-            </span>
+          {/* Team B Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                Team B
+              </span>
+              <div className="flex items-center gap-1.5 font-bold text-sm sm:text-base text-white">
+                <span className="truncate">{match.team_b_player1?.name || 'P3'}</span>
+                <span className="text-slate-500">&amp;</span>
+                <span className="truncate">{match.team_b_player2?.name || 'P4'}</span>
+              </div>
+            </div>
+
             {winner === 'TEAM_B' && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40 flex items-center gap-1">
-                <Trophy className="w-3 h-3" /> Winner
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-400 text-slate-950 flex items-center gap-1 shadow-sm">
+                <Trophy className="w-3 h-3 fill-slate-950" /> Winner
               </span>
             )}
           </div>
 
-          {/* Players */}
-          <div className="space-y-1.5 mb-5">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: match.team_b_player1?.avatar_color || '#f59e0b' }}
-              />
-              <span className="font-bold text-white text-base">
-                {match.team_b_player1?.name || 'Player 3'}
-              </span>
-              {match.team_b_player1?.nickname && (
-                <span className="text-xs text-slate-400">({match.team_b_player1.nickname})</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: match.team_b_player2?.avatar_color || '#ec4899' }}
-              />
-              <span className="font-bold text-white text-base">
-                {match.team_b_player2?.name || 'Player 4'}
-              </span>
-              {match.team_b_player2?.nickname && (
-                <span className="text-xs text-slate-400">({match.team_b_player2.nickname})</span>
-              )}
-            </div>
-          </div>
-
-          {/* Score Counter */}
-          <div className="flex items-center justify-center gap-3">
+          {/* Big Score & Stepper Controls */}
+          <div className="flex items-center justify-center gap-3 sm:gap-6 my-2">
             <button
               onClick={() => handleAdjust('B', -1)}
               disabled={scoreB <= 0}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-slate-200 hover:text-white transition-transform active:scale-95 shadow-md"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-800/90 active:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center text-white active:scale-90 transition-transform shadow-md"
             >
-              <Minus className="w-5 h-5" />
+              <Minus className="w-6 h-6 stroke-[3]" />
             </button>
 
-            <input
-              type="number"
-              min={0}
-              value={scoreB}
-              onChange={(e) => setScoreB(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-24 h-16 text-center text-4xl font-extrabold font-mono bg-slate-950/80 rounded-2xl border border-slate-700 focus:border-teal-500 text-white focus:outline-none"
-            />
+            {/* Giant Score Tap Area */}
+            <div
+              onClick={() => handleAdjust('B', 1)}
+              className="flex-1 max-w-[180px] h-20 sm:h-24 rounded-2xl bg-slate-950/90 border border-slate-800 flex items-center justify-center cursor-pointer select-none active:scale-95 transition-transform"
+              title="Tap to add point"
+            >
+              <span className="text-5xl sm:text-6xl font-black font-mono text-teal-400 tracking-tight">
+                {scoreB}
+              </span>
+            </div>
 
             <button
               onClick={() => handleAdjust('B', 1)}
-              className="w-12 h-12 rounded-2xl bg-teal-600 hover:bg-teal-500 flex items-center justify-center text-white transition-transform active:scale-95 shadow-lg shadow-teal-600/30"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-teal-600 active:bg-teal-500 flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg shadow-teal-600/30"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-7 h-7 stroke-[3]" />
             </button>
           </div>
 
-          <div className="mt-4 flex justify-center">
+          <div className="flex justify-end">
             <button
+              type="button"
               onClick={() => setWinner('TEAM_B')}
-              className={`w-full py-2 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
+              className={`text-xs px-3 py-1 rounded-xl font-bold transition-colors ${
                 winner === 'TEAM_B'
-                  ? 'bg-teal-500 text-slate-950 border-teal-400 font-extrabold'
-                  : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-teal-500/50 hover:text-white'
+                  ? 'text-teal-300 bg-teal-500/20 border border-teal-500/40'
+                  : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
               }`}
             >
-              <Trophy className="w-3.5 h-3.5" />
-              {winner === 'TEAM_B' ? 'Marked as Winner' : 'Mark Team B as Winner'}
+              {winner === 'TEAM_B' ? '✓ Winner Selected' : 'Mark Team B Winner'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Quick Presets & Controls */}
-      <div className="mt-5 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium">Quick Sets:</span>
-          <button
-            type="button"
-            onClick={() => handleSetQuickScore(21, 19, 'TEAM_A')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-colors"
-          >
-            21-19
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSetQuickScore(19, 21, 'TEAM_B')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-colors"
-          >
-            19-21
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSetQuickScore(15, 11, 'TEAM_A')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-colors"
-          >
-            15-11
-          </button>
+      {/* Bottom Action Footer */}
+      <div className="pt-2 sm:pt-3 border-t border-slate-800/80 max-w-2xl mx-auto w-full flex-shrink-0 space-y-2.5 pb-safe">
+        {/* Quick Sets & Reset */}
+        <div className="flex items-center justify-between gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-500 font-medium">Quick Sets:</span>
+            <button
+              type="button"
+              onClick={() => handleSetQuickScore(21, 19, 'TEAM_A')}
+              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-mono text-slate-300 active:scale-95 transition-transform"
+            >
+              21-19
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetQuickScore(19, 21, 'TEAM_B')}
+              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-mono text-slate-300 active:scale-95 transition-transform"
+            >
+              19-21
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetQuickScore(15, 11, 'TEAM_A')}
+              className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-mono text-slate-300 active:scale-95 transition-transform"
+            >
+              15-11
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleResetScores}
-            className="p-1 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
-            title="Reset scores"
+            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300 px-2 py-1 rounded-lg hover:bg-slate-900 transition-colors"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3 h-3" /> Reset
           </button>
         </div>
 
-        {/* Log Winner / Save Button */}
-        <div className="flex items-center gap-2">
+        {/* Big Primary Action Buttons */}
+        <div className="grid grid-cols-2 gap-2">
           <button
+            type="button"
             onClick={() => handleConfirmWinner('PENDING')}
             disabled={isSaving}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+            className="py-3 px-3 rounded-2xl text-xs font-bold text-slate-300 bg-slate-900 hover:bg-slate-800 border border-slate-800 active:scale-95 transition-all text-center"
           >
-            Save as In-Progress
+            Save In-Progress
           </button>
+
           <button
+            type="button"
             onClick={() => handleConfirmWinner()}
             disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl text-xs font-extrabold text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-500 hover:opacity-95 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center gap-2"
+            className="py-3 px-4 rounded-2xl text-xs font-black text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-300 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
           >
             {isSaving ? (
               <span>Saving...</span>
             ) : (
               <>
                 <Check className="w-4 h-4 stroke-[3]" />
-                <span>Log Winner & Save</span>
+                <span>Log Winner &amp; Save</span>
               </>
             )}
           </button>

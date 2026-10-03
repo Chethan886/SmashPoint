@@ -120,38 +120,25 @@ export default function MembersPage() {
   });
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs tracking-wider uppercase mb-1">
-            <Users className="w-4 h-4" />
-            <span>Master Squad Roster</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Club Members
+          <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Squad Roster
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Manage your badminton players, nicknames, and active profiles.
+          <p className="text-xs text-slate-400">
+            {members.length} players registered
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsAdding(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Add Player</span>
-          </button>
-          <Link
-            href="/matches"
-            className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 font-semibold text-sm transition-colors"
-          >
-            <span>Generate Matches</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
+        <button
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/30 transition-all active:scale-95"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>Add Player</span>
+        </button>
       </div>
 
       {/* Filter / Search Bar */}
