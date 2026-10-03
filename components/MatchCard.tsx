@@ -10,16 +10,15 @@ import {
   CheckCircle2, 
   Edit3,
   Plus,
-  Minus,
-  Check
+  Minus
 } from 'lucide-react';
-import ScoreTracker from './ScoreTracker';
 
 interface MatchCardProps {
   match: MatchWithPlayers;
   restingMembers?: Member[];
   onSaveScore: (matchId: string, scoreA: number, scoreB: number, winningTeam: WinningTeam) => Promise<void>;
   onDeleteMatch?: (matchId: string) => Promise<void>;
+  onOpenScoreboard: (match: MatchWithPlayers) => void;
 }
 
 export default function MatchCard({
@@ -27,8 +26,8 @@ export default function MatchCard({
   restingMembers = [],
   onSaveScore,
   onDeleteMatch,
+  onOpenScoreboard,
 }: MatchCardProps) {
-  const [isScoringOpen, setIsScoringOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const isCompleted = match.winning_team === 'TEAM_A' || match.winning_team === 'TEAM_B';
@@ -59,9 +58,9 @@ export default function MatchCard({
   };
 
   return (
-    <div className="rounded-2xl sm:rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 transition-all duration-200 shadow-md overflow-hidden backdrop-blur-sm">
+    <div className="rounded-2xl sm:rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 transition-all duration-200 shadow-md backdrop-blur-sm">
       {/* Top Status Header */}
-      <div className="px-3.5 py-2 sm:px-5 sm:py-2.5 bg-slate-950/80 border-b border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+      <div className="px-3.5 py-2 sm:px-5 sm:py-2.5 bg-slate-950/80 border-b border-slate-800/80 flex items-center justify-between gap-2 text-xs rounded-t-2xl sm:rounded-t-3xl">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <span className="font-extrabold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] sm:text-xs">
             R{match.round_number}
@@ -232,26 +231,15 @@ export default function MatchCard({
           )}
 
           <button
-            onClick={() => setIsScoringOpen(true)}
-            className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600/30 border border-emerald-500/30 transition-colors flex items-center gap-1 flex-shrink-0"
+            type="button"
+            onClick={() => onOpenScoreboard(match)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600 border border-emerald-500/30 transition-colors flex items-center gap-1.5 flex-shrink-0"
           >
-            <Edit3 className="w-3 h-3" />
+            <Edit3 className="w-3.5 h-3.5" />
             <span>Scoreboard</span>
           </button>
         </div>
       </div>
-
-      {/* Full Screen Live Scoreboard */}
-      {isScoringOpen && (
-        <ScoreTracker
-          match={match}
-          onSaveScore={async (id, a, b, winner) => {
-            await onSaveScore(id, a, b, winner);
-            setIsScoringOpen(false);
-          }}
-          onClose={() => setIsScoringOpen(false)}
-        />
-      )}
     </div>
   );
 }

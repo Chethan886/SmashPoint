@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Member, MatchWithPlayers, Session, WinningTeam } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import MatchCard from '@/components/MatchCard';
+import ScoreTracker from '@/components/ScoreTracker';
 import { 
   Swords, 
   Users, 
@@ -26,6 +27,7 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<MatchWithPlayers[]>([]);
   const [generating, setGenerating] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'matches' | 'setup'>('matches');
+  const [activeScoringMatchId, setActiveScoringMatchId] = useState<string | null>(null);
 
   // Matchmaking configuration
   const [targetMatches, setTargetMatches] = useState<number>(3);
@@ -460,6 +462,7 @@ export default function MatchesPage() {
                     restingMembers={restingMembers}
                     onSaveScore={handleSaveScore}
                     onDeleteMatch={handleDeleteMatch}
+                    onOpenScoreboard={(m) => setActiveScoringMatchId(m.id)}
                   />
                 );
               })}
@@ -467,6 +470,22 @@ export default function MatchesPage() {
           )}
         </div>
       </div>
+
+      {/* Full-Screen Court Scoreboard Modal (Rendered at Page Root to prevent CSS clipping) */}
+      {(() => {
+        const activeMatch = matches.find((m) => m.id === activeScoringMatchId);
+        if (!activeMatch) return null;
+        return (
+          <ScoreTracker
+            match={activeMatch}
+            onSaveScore={async (id, a, b, winner) => {
+              await handleSaveScore(id, a, b, winner);
+              setActiveScoringMatchId(null);
+            }}
+            onClose={() => setActiveScoringMatchId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

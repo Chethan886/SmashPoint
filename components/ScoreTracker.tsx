@@ -85,7 +85,7 @@ export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrack
   const isMatchPoint = (scoreA >= 20 || scoreB >= 20) && Math.abs(scoreA - scoreB) >= 1;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col justify-between text-white p-3 sm:p-6 overflow-y-auto min-h-[100dvh]">
+    <div className="fixed inset-0 z-[9999] bg-slate-950 w-screen h-[100dvh] flex flex-col justify-between text-white p-3 sm:p-6 overflow-y-auto">
       {/* Top Header Bar */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800 flex-shrink-0">
         <div className="flex items-center gap-2">
