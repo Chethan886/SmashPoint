@@ -60,16 +60,176 @@ function addCompletedSessionId(id: string) {
   }
 }
 
+const DATA_VERSION_KEY = 'badminton_data_version';
+const CURRENT_DATA_VERSION = '2026-10-03-real-v1';
+
+function checkDataVersionMigration() {
+  if (typeof window === 'undefined') return;
+  const version = localStorage.getItem(DATA_VERSION_KEY);
+  if (version !== CURRENT_DATA_VERSION) {
+    // Clear out old mock sessions and matches so yesterday's real match data takes precedence
+    localStorage.removeItem(LOCAL_STORAGE_SESSIONS_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_MATCHES_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_COMPLETED_SESSIONS_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_MEMBERS_KEY);
+    localStorage.setItem(DATA_VERSION_KEY, CURRENT_DATA_VERSION);
+  }
+}
+
 const DEFAULT_MEMBERS: Member[] = [
-  { id: '11111111-1111-4111-a111-111111111111', name: 'Chethan', nickname: 'Smash Master', avatar_color: '#10b981', created_at: new Date().toISOString() },
-  { id: '22222222-2222-4222-a222-222222222222', name: 'Ganja', nickname: 'Drop Specialist', avatar_color: '#3b82f6', created_at: new Date().toISOString() },
-  { id: '33333333-3333-4333-a333-333333333333', name: 'Suhas', nickname: 'Net Wizard', avatar_color: '#f59e0b', created_at: new Date().toISOString() },
-  { id: '44444444-4444-4444-a444-444444444444', name: 'Gay Prateek', nickname: 'Rocket Serve', avatar_color: '#ec4899', created_at: new Date().toISOString() },
-  { id: '55555555-5555-4555-a555-555555555555', name: 'Chandan', nickname: 'Court Beast', avatar_color: '#8b5cf6', created_at: new Date().toISOString() },
-  { id: '66666666-6666-4666-a666-666666666666', name: 'Royden', nickname: 'Iron Wall', avatar_color: '#06b6d4', created_at: new Date().toISOString() },
+  { id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', name: 'Chethan', nickname: 'Smash Master', avatar_color: '#10b981', created_at: '2026-10-03T11:35:21.678Z' },
+  { id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', name: 'Ganja', nickname: 'Drop Specialist', avatar_color: '#3b82f6', created_at: '2026-10-03T11:35:21.678Z' },
+  { id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', name: 'Suhas', nickname: 'Net Wizard', avatar_color: '#f59e0b', created_at: '2026-10-03T11:35:21.678Z' },
+  { id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', name: 'Gay Prateek', nickname: 'Rocket Serve', avatar_color: '#ec4899', created_at: '2026-10-03T11:35:21.678Z' },
+  { id: '6f151239-eeff-4830-b412-588a3a5984d1', name: 'Chandan', nickname: 'Court Beast', avatar_color: '#8b5cf6', created_at: '2026-10-03T11:35:21.678Z' },
+  { id: 'f3928f2c-30aa-40aa-b664-403305462f2c', name: 'Royden', nickname: 'Iron Wall', avatar_color: '#06b6d4', created_at: '2026-10-03T11:35:21.678Z' },
+];
+
+const DEFAULT_SESSIONS: Session[] = [
+  {
+    id: 'c1234567-0000-0000-0000-202610030000',
+    session_date: '2026-10-03',
+    location: 'Smash O Station / Court [COMPLETED]',
+    status: 'COMPLETED',
+    created_at: '2026-10-03T11:35:37.000Z'
+  }
+];
+
+const DEFAULT_MATCHES: Match[] = [
+  {
+    id: 'm-20261003-r1',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 1,
+    team_a_player1_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    team_a_player2_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_b_player1_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_b_player2_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    score_team_a: 21,
+    score_team_b: 15,
+    winning_team: 'TEAM_A',
+    created_at: '2026-10-03T12:00:00.000Z'
+  },
+  {
+    id: 'm-20261003-r2',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 2,
+    team_a_player1_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    team_a_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    team_b_player1_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    team_b_player2_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    score_team_a: 15,
+    score_team_b: 21,
+    winning_team: 'TEAM_B',
+    created_at: '2026-10-03T12:15:00.000Z'
+  },
+  {
+    id: 'm-20261003-r3',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 3,
+    team_a_player1_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_a_player2_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    team_b_player1_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    team_b_player2_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    score_team_a: 15,
+    score_team_b: 21,
+    winning_team: 'TEAM_B',
+    created_at: '2026-10-03T12:30:00.000Z'
+  },
+  {
+    id: 'm-20261003-r4',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 4,
+    team_a_player1_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_a_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    team_b_player1_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_b_player2_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    score_team_a: 21,
+    score_team_b: 15,
+    winning_team: 'TEAM_A',
+    created_at: '2026-10-03T12:45:00.000Z'
+  },
+  {
+    id: 'm-20261003-r5',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 5,
+    team_a_player1_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    team_a_player2_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    team_b_player1_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_b_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    score_team_a: 15,
+    score_team_b: 21,
+    winning_team: 'TEAM_B',
+    created_at: '2026-10-03T13:00:00.000Z'
+  },
+  {
+    id: 'm-20261003-r6',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 6,
+    team_a_player1_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    team_a_player2_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    team_b_player1_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_b_player2_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    score_team_a: 15,
+    score_team_b: 21,
+    winning_team: 'TEAM_B',
+    created_at: '2026-10-03T13:15:00.000Z'
+  },
+  {
+    id: 'm-20261003-r7',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 7,
+    team_a_player1_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    team_a_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    team_b_player1_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    team_b_player2_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    score_team_a: 21,
+    score_team_b: 15,
+    winning_team: 'TEAM_A',
+    created_at: '2026-10-03T13:30:00.000Z'
+  },
+  {
+    id: 'm-20261003-r8',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 8,
+    team_a_player1_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_a_player2_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_b_player1_id: 'a6081e2b-b2d7-4cd1-98c0-b516b18ed164', // Gay Prateek
+    team_b_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    score_team_a: 21,
+    score_team_b: 15,
+    winning_team: 'TEAM_A',
+    created_at: '2026-10-03T13:45:00.000Z'
+  },
+  {
+    id: 'm-20261003-r9',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 9,
+    team_a_player1_id: 'ee7c5536-ffa3-479d-8fcf-8e824ee15731', // Chethan
+    team_a_player2_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    team_b_player1_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_b_player2_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    score_team_a: 21,
+    score_team_b: 15,
+    winning_team: 'TEAM_A',
+    created_at: '2026-10-03T14:00:00.000Z'
+  },
+  {
+    id: 'm-20261003-r10',
+    session_id: 'c1234567-0000-0000-0000-202610030000',
+    round_number: 10,
+    team_a_player1_id: '3564eb2c-33dd-4fa3-987a-6f322e5e1835', // Suhas
+    team_a_player2_id: 'f3928f2c-30aa-40aa-b664-403305462f2c', // Royden
+    team_b_player1_id: '6f151239-eeff-4830-b412-588a3a5984d1', // Chandan
+    team_b_player2_id: 'b01cf49f-fdab-4b14-801b-d3b5a3b9f990', // Ganja
+    score_team_a: 15,
+    score_team_b: 21,
+    winning_team: 'TEAM_B',
+    created_at: '2026-10-03T14:15:00.000Z'
+  }
 ];
 
 function getLocalMembers(): Member[] {
+  checkDataVersionMigration();
   if (typeof window === 'undefined') return DEFAULT_MEMBERS;
   const raw = localStorage.getItem(LOCAL_STORAGE_MEMBERS_KEY);
   if (!raw) {
@@ -90,13 +250,18 @@ function saveLocalMembers(members: Member[]) {
 }
 
 function getLocalSessions(): Session[] {
-  if (typeof window === 'undefined') return [];
+  checkDataVersionMigration();
+  if (typeof window === 'undefined') return DEFAULT_SESSIONS;
   const raw = localStorage.getItem(LOCAL_STORAGE_SESSIONS_KEY);
-  if (!raw) return [];
+  if (!raw) {
+    localStorage.setItem(LOCAL_STORAGE_SESSIONS_KEY, JSON.stringify(DEFAULT_SESSIONS));
+    return DEFAULT_SESSIONS;
+  }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return parsed.length > 0 ? parsed : DEFAULT_SESSIONS;
   } catch {
-    return [];
+    return DEFAULT_SESSIONS;
   }
 }
 
@@ -107,13 +272,18 @@ function saveLocalSessions(sessions: Session[]) {
 }
 
 function getLocalMatches(): Match[] {
-  if (typeof window === 'undefined') return [];
+  checkDataVersionMigration();
+  if (typeof window === 'undefined') return DEFAULT_MATCHES;
   const raw = localStorage.getItem(LOCAL_STORAGE_MATCHES_KEY);
-  if (!raw) return [];
+  if (!raw) {
+    localStorage.setItem(LOCAL_STORAGE_MATCHES_KEY, JSON.stringify(DEFAULT_MATCHES));
+    return DEFAULT_MATCHES;
+  }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return parsed.length > 0 ? parsed : DEFAULT_MATCHES;
   } catch {
-    return [];
+    return DEFAULT_MATCHES;
   }
 }
 
