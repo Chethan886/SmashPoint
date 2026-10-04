@@ -131,3 +131,16 @@ VALUES
   ('Chandan', 'Court Beast', '#8b5cf6'),
   ('Royden', 'Iron Wall', '#06b6d4')
 ON CONFLICT DO NOTHING;
+
+-- 8. High-Performance Database Indexes (Scalable for thousands of matches)
+CREATE INDEX IF NOT EXISTS idx_matches_session_id ON matches(session_id);
+CREATE INDEX IF NOT EXISTS idx_matches_round_number ON matches(round_number);
+CREATE INDEX IF NOT EXISTS idx_matches_winning_team ON matches(winning_team);
+CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_session_date ON sessions(session_date DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_matches_team_a_p1 ON matches(team_a_player1_id);
+CREATE INDEX IF NOT EXISTS idx_matches_team_a_p2 ON matches(team_a_player2_id);
+CREATE INDEX IF NOT EXISTS idx_matches_team_b_p1 ON matches(team_b_player1_id);
+CREATE INDEX IF NOT EXISTS idx_matches_team_b_p2 ON matches(team_b_player2_id);
+

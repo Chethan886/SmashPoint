@@ -56,12 +56,11 @@ export default function DashboardPage() {
 
   const handleSelectDate = async (date: string | undefined) => {
     setSelectedDate(date);
-    setIsLoading(true);
     try {
       const data = await dataService.getLeaderboard(date);
       setStats(data);
-    } finally {
-      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to update leaderboard for date:', err);
     }
   };
 
