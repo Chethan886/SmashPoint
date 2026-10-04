@@ -15,11 +15,13 @@ import {
   Camera,
   Upload,
   Image as ImageIcon,
-  BarChart2
+  BarChart2,
+  Crop as CropIcon
 } from 'lucide-react';
 import Link from 'next/link';
 import ToastContainer, { ToastMessage } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
+import ImageCropperModal from '@/components/ImageCropperModal';
 
 const AVATAR_COLORS = [
   '#10b981', // emerald
@@ -55,6 +57,11 @@ export default function MembersPage() {
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Interactive Avatar Cropper State
+  const [isCropperOpen, setIsCropperOpen] = useState<boolean>(false);
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null);
+  const [isCroppingForEdit, setIsCroppingForEdit] = useState<boolean>(false);
+
   // Toast & Modal States
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [deletingMember, setDeletingMember] = useState<{ id: string; name: string } | null>(null);
@@ -84,31 +91,50 @@ export default function MembersPage() {
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      const compressed = await compressImageToDataUrl(file);
-      if (isEdit) {
-        setEditAvatarUrl(compressed);
-      } else {
-        setAvatarUrl(compressed);
-      }
-      showToast({
-        type: 'success',
-        title: 'Photo Uploaded',
-        message: 'Profile picture has been attached!',
-      });
-    } catch (err: any) {
+    if (!file.type.startsWith('image/')) {
       showToast({
         type: 'error',
-        title: 'Upload Failed',
-        message: err?.message || 'Could not process photo.',
+        title: 'Invalid File',
+        message: 'Please select a valid image file (JPG, PNG, WebP).',
       });
-    } finally {
       e.target.value = '';
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropperImageSrc(reader.result as string);
+      setIsCroppingForEdit(isEdit);
+      setIsCropperOpen(true);
+    };
+    reader.onerror = () => {
+      showToast({
+        type: 'error',
+        title: 'Error Reading Image',
+        message: 'Could not open the selected picture.',
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleCropComplete = (croppedDataUrl: string) => {
+    if (isCroppingForEdit) {
+      setEditAvatarUrl(croppedDataUrl);
+    } else {
+      setAvatarUrl(croppedDataUrl);
+    }
+    setIsCropperOpen(false);
+    setCropperImageSrc(null);
+    showToast({
+      type: 'success',
+      title: 'Photo Cropped',
+      message: 'Avatar repositioned and attached!',
+    });
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -394,7 +420,7 @@ export default function MembersPage() {
                       className="hidden"
                       onChange={(e) => handleFileChange(e, false)}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
                         onClick={() => addFileInputRef.current?.click()}
@@ -404,13 +430,28 @@ export default function MembersPage() {
                         <span>{avatarUrl ? 'Change Photo' : 'Upload Photo'}</span>
                       </button>
                       {avatarUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setAvatarUrl(null)}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
-                        >
-                          Remove
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCropperImageSrc(avatarUrl);
+                              setIsCroppingForEdit(false);
+                              setIsCropperOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold transition-colors border border-slate-700 flex items-center gap-1"
+                            title="Crop and reposition current photo"
+                          >
+                            <CropIcon className="w-3.5 h-3.5" />
+                            <span>Adjust</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAvatarUrl(null)}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </div>
                     <p className="text-[10px] text-slate-400">
@@ -539,7 +580,7 @@ export default function MembersPage() {
                       className="hidden"
                       onChange={(e) => handleFileChange(e, true)}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
                         onClick={() => editFileInputRef.current?.click()}
@@ -549,13 +590,28 @@ export default function MembersPage() {
                         <span>{editAvatarUrl ? 'Change Photo' : 'Upload Photo'}</span>
                       </button>
                       {editAvatarUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setEditAvatarUrl(null)}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
-                        >
-                          Remove
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCropperImageSrc(editAvatarUrl);
+                              setIsCroppingForEdit(true);
+                              setIsCropperOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold transition-colors border border-slate-700 flex items-center gap-1"
+                            title="Crop and reposition current photo"
+                          >
+                            <CropIcon className="w-3.5 h-3.5" />
+                            <span>Adjust</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditAvatarUrl(null)}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </div>
                     <p className="text-[10px] text-slate-400">
@@ -643,6 +699,17 @@ export default function MembersPage() {
         cancelLabel="Keep Player"
         variant="danger"
         iconType="danger"
+      />
+
+      {/* Interactive Avatar Cropper Modal */}
+      <ImageCropperModal
+        isOpen={isCropperOpen}
+        imageSrc={cropperImageSrc}
+        onClose={() => {
+          setIsCropperOpen(false);
+          setCropperImageSrc(null);
+        }}
+        onCropComplete={handleCropComplete}
       />
     </div>
   );
