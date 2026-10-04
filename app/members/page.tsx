@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Member } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
+import { compressImageToDataUrl } from '@/lib/imageUtils';
 import { 
   Users, 
   UserPlus, 
@@ -10,9 +11,15 @@ import {
   Trash2, 
   Search, 
   X, 
-  ArrowRight
+  ArrowRight,
+  Camera,
+  Upload,
+  Image as ImageIcon,
+  BarChart2
 } from 'lucide-react';
 import Link from 'next/link';
+import ToastContainer, { ToastMessage } from '@/components/Toast';
+import ConfirmModal from '@/components/ConfirmModal';
 
 const AVATAR_COLORS = [
   '#10b981', // emerald
@@ -35,6 +42,7 @@ export default function MembersPage() {
   const [name, setName] = useState<string>('');
   const [nickname, setNickname] = useState<string>('');
   const [avatarColor, setAvatarColor] = useState<string>(AVATAR_COLORS[0]);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Edit Member State
@@ -42,6 +50,23 @@ export default function MembersPage() {
   const [editName, setEditName] = useState<string>('');
   const [editNickname, setEditNickname] = useState<string>('');
   const [editColor, setEditColor] = useState<string>('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
+
+  const addFileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Toast & Modal States
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [deletingMember, setDeletingMember] = useState<{ id: string; name: string } | null>(null);
+
+  const showToast = (toast: Omit<ToastMessage, 'id'>) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { ...toast, id }]);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   useEffect(() => {
     loadMembers();
@@ -59,6 +84,33 @@ export default function MembersPage() {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await compressImageToDataUrl(file);
+      if (isEdit) {
+        setEditAvatarUrl(compressed);
+      } else {
+        setAvatarUrl(compressed);
+      }
+      showToast({
+        type: 'success',
+        title: 'Photo Uploaded',
+        message: 'Profile picture has been attached!',
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Upload Failed',
+        message: err?.message || 'Could not process photo.',
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -68,14 +120,25 @@ export default function MembersPage() {
 
     try {
       setErrorMsg(null);
-      await dataService.addMember(name.trim(), nickname.trim() || undefined, avatarColor);
+      await dataService.addMember(name.trim(), nickname.trim() || undefined, avatarColor, avatarUrl);
+      showToast({
+        type: 'success',
+        title: 'Player Added',
+        message: `${name.trim()} has been added to the squad!`,
+      });
       setName('');
       setNickname('');
+      setAvatarUrl(null);
       setAvatarColor(AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]);
       setIsAdding(false);
       await loadMembers();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to add member');
+      showToast({
+        type: 'error',
+        title: 'Add Failed',
+        message: err?.message || 'Failed to add member',
+      });
     }
   };
 
@@ -84,6 +147,7 @@ export default function MembersPage() {
     setEditName(m.name);
     setEditNickname(m.nickname || '');
     setEditColor(m.avatar_color || AVATAR_COLORS[0]);
+    setEditAvatarUrl(m.avatar_url || null);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -95,22 +159,45 @@ export default function MembersPage() {
         name: editName.trim(),
         nickname: editNickname.trim() || null,
         avatar_color: editColor,
+        avatar_url: editAvatarUrl,
+      });
+      showToast({
+        type: 'success',
+        title: 'Player Updated',
+        message: `${editName.trim()}'s profile was updated.`,
       });
       setEditingMember(null);
       await loadMembers();
     } catch (err: any) {
-      alert('Failed to update member: ' + err.message);
+      showToast({
+        type: 'error',
+        title: 'Update Failed',
+        message: err.message || 'Failed to update member.',
+      });
     }
   };
 
-  const handleDeleteMember = async (id: string, memberName: string) => {
-    if (confirm(`Are you sure you want to remove ${memberName} from the roster?`)) {
-      try {
-        await dataService.deleteMember(id);
-        await loadMembers();
-      } catch (err: any) {
-        alert('Failed to delete member: ' + err.message);
-      }
+  const handleDeleteMember = (id: string, memberName: string) => {
+    setDeletingMember({ id, name: memberName });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingMember) return;
+    try {
+      await dataService.deleteMember(deletingMember.id);
+      showToast({
+        type: 'info',
+        title: 'Player Removed',
+        message: `${deletingMember.name} has been removed from the roster.`,
+      });
+      setDeletingMember(null);
+      await loadMembers();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err.message || 'Failed to delete member.',
+      });
     }
   };
 
@@ -185,29 +272,48 @@ export default function MembersPage() {
               className="group relative rounded-3xl bg-slate-900/50 border border-slate-800/80 hover:border-emerald-500/40 p-5 transition-all duration-300 shadow-lg hover:shadow-emerald-950/20 backdrop-blur-sm"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-md"
-                    style={{ backgroundColor: member.avatar_color || '#10b981' }}
-                  >
-                    {member.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-white text-base group-hover:text-emerald-300 transition-colors">
+                <Link
+                  href={`/stats?player=${member.id}`}
+                  className="flex items-center gap-3.5 group/info flex-1 min-w-0"
+                  title="View player statistics"
+                >
+                  {member.avatar_url ? (
+                    <img
+                      src={member.avatar_url}
+                      alt={member.name}
+                      className="w-12 h-12 rounded-2xl object-cover shadow-md ring-1 ring-white/10 group-hover/info:ring-emerald-400 transition-all"
+                    />
+                  ) : (
+                    <div
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-md group-hover/info:scale-105 transition-transform"
+                      style={{ backgroundColor: member.avatar_color || '#10b981' }}
+                    >
+                      {member.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="font-extrabold text-white text-base group-hover/info:text-emerald-300 transition-colors truncate">
                       {member.name}
                     </h3>
                     {member.nickname ? (
-                      <span className="inline-block mt-0.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-block mt-0.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 truncate max-w-full">
                         &quot;{member.nickname}&quot;
                       </span>
                     ) : (
                       <span className="text-xs text-slate-500 italic">No nickname set</span>
                     )}
                   </div>
-                </div>
+                </Link>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity shrink-0">
+                  <Link
+                    href={`/stats?player=${member.id}`}
+                    className="p-2 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                    title="View deep player stats"
+                  >
+                    <BarChart2 className="w-4 h-4" />
+                  </Link>
                   <button
                     onClick={() => handleStartEdit(member)}
                     className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -257,6 +363,63 @@ export default function MembersPage() {
             )}
 
             <form onSubmit={handleAddMember} className="space-y-4">
+              {/* Profile Picture Upload */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Profile Picture (Optional)
+                </label>
+                <div className="flex items-center gap-3.5 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="relative shrink-0">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Preview"
+                        className="w-14 h-14 rounded-2xl object-cover ring-2 ring-emerald-500/50"
+                      />
+                    ) : (
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-inner"
+                        style={{ backgroundColor: avatarColor }}
+                      >
+                        {name.trim() ? name.trim().charAt(0).toUpperCase() : <Camera className="w-6 h-6 opacity-60" />}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 flex-1">
+                    <input
+                      ref={addFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleFileChange(e, false)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => addFileInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-700"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{avatarUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                      </button>
+                      {avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setAvatarUrl(null)}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Supports JPG, PNG, WebP or camera shot.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Player Name *
@@ -345,6 +508,63 @@ export default function MembersPage() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              {/* Profile Picture Upload */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Profile Picture
+                </label>
+                <div className="flex items-center gap-3.5 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="relative shrink-0">
+                    {editAvatarUrl ? (
+                      <img
+                        src={editAvatarUrl}
+                        alt="Preview"
+                        className="w-14 h-14 rounded-2xl object-cover ring-2 ring-emerald-500/50"
+                      />
+                    ) : (
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-inner"
+                        style={{ backgroundColor: editColor }}
+                      >
+                        {editName.trim() ? editName.trim().charAt(0).toUpperCase() : <Camera className="w-6 h-6 opacity-60" />}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 flex-1">
+                    <input
+                      ref={editFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleFileChange(e, true)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => editFileInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-700"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{editAvatarUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                      </button>
+                      {editAvatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEditAvatarUrl(null)}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-800/40"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Upload from phone or computer gallery.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Player Name *
@@ -408,6 +628,22 @@ export default function MembersPage() {
           </div>
         </div>
       )}
+
+      {/* Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Confirmation Modal: Remove Squad Member */}
+      <ConfirmModal
+        isOpen={!!deletingMember}
+        onClose={() => setDeletingMember(null)}
+        onConfirm={handleConfirmDelete}
+        title="Remove Member from Roster?"
+        description={`Are you sure you want to remove ${deletingMember?.name || 'this player'} from the active squad? Their past match history will be preserved.`}
+        confirmLabel="Remove Player"
+        cancelLabel="Keep Player"
+        variant="danger"
+        iconType="danger"
+      />
     </div>
   );
 }

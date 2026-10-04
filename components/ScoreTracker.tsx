@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { MatchWithPlayers, WinningTeam } from '@/lib/types';
+import { getBadmintonMatchStatus } from '@/lib/matchmaking';
 import { 
   Trophy, 
   Plus, 
@@ -41,16 +42,17 @@ export default function ScoreTracker({ match, onSaveScore, onClose }: ScoreTrack
   };
 
   const handleAdjust = (team: 'A' | 'B', delta: number) => {
-    if (team === 'A') {
-      const next = Math.max(0, scoreA + delta);
-      setScoreA(next);
-      if (next > scoreB) setWinner('TEAM_A');
-      else if (next < scoreB) setWinner('TEAM_B');
+    const nextA = team === 'A' ? Math.max(0, scoreA + delta) : scoreA;
+    const nextB = team === 'B' ? Math.max(0, scoreB + delta) : scoreB;
+    setScoreA(nextA);
+    setScoreB(nextB);
+
+    const status = getBadmintonMatchStatus(nextA, nextB, 'PENDING');
+    if (status.hasWon && status.winner) {
+      setWinner(status.winner);
+      triggerVictoryConfetti();
     } else {
-      const next = Math.max(0, scoreB + delta);
-      setScoreB(next);
-      if (next > scoreA) setWinner('TEAM_B');
-      else if (next < scoreA) setWinner('TEAM_A');
+      setWinner('PENDING');
     }
   };
 

@@ -11,7 +11,9 @@ import {
   Flame, 
   Calendar, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Crown,
+  Zap
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,7 +21,10 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<PlayerStats[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
+  const [selectedDate, setSelectedDate] = useState<string | undefined>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [matchDates, setMatchDates] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -29,19 +34,19 @@ export default function DashboardPage() {
   const initDashboard = async () => {
     try {
       setIsLoading(true);
-      const [allSessions, todaySession, squadMembers] = await Promise.all([
+      const today = new Date().toISOString().split('T')[0];
+      const [allSessions, squadMembers, leaderboardData, matchDatesList] = await Promise.all([
         dataService.getAllSessions(),
-        dataService.getOrCreateTodaySession(),
         dataService.getMembers(),
+        dataService.getLeaderboard(today),
+        dataService.getDatesWithMatches(),
       ]);
 
-      setSessions(allSessions.length > 0 ? allSessions : [todaySession]);
+      setSessions(allSessions);
       setMembers(squadMembers);
-
-      // Default to today's session
-      setSelectedSessionId(todaySession.id);
-      const leaderboardData = await dataService.getLeaderboard(todaySession.id);
+      setSelectedDate(today);
       setStats(leaderboardData);
+      setMatchDates(matchDatesList);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
     } finally {
@@ -49,18 +54,24 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSelectSession = async (sessionId: string | undefined) => {
-    setSelectedSessionId(sessionId);
+  const handleSelectDate = async (date: string | undefined) => {
+    setSelectedDate(date);
     setIsLoading(true);
     try {
-      const data = await dataService.getLeaderboard(sessionId);
+      const data = await dataService.getLeaderboard(date);
       setStats(data);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const topPlayer = stats.length > 0 && stats[0].wins > 0 ? stats[0] : null;
+
+  const activeStats = stats.filter((s) => s.total_matches > 0);
+  const smashLord = activeStats.length > 0 && activeStats[0].wins > 0 ? activeStats[0] : null;
+  const gayLord = activeStats.length > 0 && (activeStats[activeStats.length - 1].losses > 0 || activeStats[activeStats.length - 1].total_matches > 0)
+    ? activeStats[activeStats.length - 1] 
+    : null;
+
   const totalCompletedGames = stats.reduce((acc, s) => acc + s.wins, 0);
 
   return (
@@ -105,11 +116,20 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-slate-950/60 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-800/80">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Flame className="w-3 h-3 text-amber-400" /> #1 Player
+            <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+              <Zap className="w-3 h-3 text-amber-400" /> Smash Lord ⚡
             </div>
             <div className="text-lg sm:text-xl font-black text-amber-400 truncate mt-0.5">
-              {topPlayer ? topPlayer.name : 'TBD'}
+              {smashLord ? smashLord.name : 'No Matches'}
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-pink-500/20 bg-pink-950/10">
+            <div className="text-[10px] font-bold text-pink-400 uppercase tracking-wider flex items-center gap-1">
+              <Crown className="w-3 h-3 text-pink-400 fill-pink-400" /> The Gay Lord 👑
+            </div>
+            <div className="text-lg sm:text-xl font-black text-pink-300 truncate mt-0.5">
+              {gayLord ? gayLord.name : 'No Matches'}
             </div>
           </div>
 
@@ -121,15 +141,6 @@ export default function DashboardPage() {
               {totalCompletedGames}
             </div>
           </div>
-
-          <div className="bg-slate-950/60 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-800/80">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Calendar className="w-3 h-3 text-purple-400" /> Session
-            </div>
-            <div className="text-xs sm:text-sm font-bold text-white truncate mt-1">
-              {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -137,8 +148,9 @@ export default function DashboardPage() {
       <LeaderboardTable
         stats={stats}
         sessions={sessions}
-        selectedSessionId={selectedSessionId}
-        onSelectSession={handleSelectSession}
+        selectedDate={selectedDate}
+        onSelectDate={handleSelectDate}
+        matchDates={matchDates}
         isLoading={isLoading}
       />
     </div>

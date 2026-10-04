@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Member, MatchWithPlayers, Session, WinningTeam } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import MatchCard from '@/components/MatchCard';
-import ScoreTracker from '@/components/ScoreTracker';
+import { getBadmintonMatchStatus } from '@/lib/matchmaking';
 import { 
   Swords, 
   Users, 
@@ -12,22 +13,28 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Sliders, 
-  Plus,
-  Minus,
-  Check,
-  RotateCcw,
-  Sparkles
+  Plus, 
+  Minus, 
+  Check, 
+  RotateCcw, 
+  Sparkles, 
+  Archive, 
+  History as HistoryIcon, 
+  X, 
+  Trophy 
 } from 'lucide-react';
 import Link from 'next/link';
+import ToastContainer, { ToastMessage } from '@/components/Toast';
+import ConfirmModal from '@/components/ConfirmModal';
 
 export default function MatchesPage() {
+  const [mounted, setMounted] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [matches, setMatches] = useState<MatchWithPlayers[]>([]);
   const [generating, setGenerating] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'matches' | 'setup'>('matches');
-  const [activeScoringMatchId, setActiveScoringMatchId] = useState<string | null>(null);
 
   // Matchmaking configuration
   const [targetMatches, setTargetMatches] = useState<number>(3);
@@ -35,7 +42,28 @@ export default function MatchesPage() {
   const [totalRoundsInput, setTotalRoundsInput] = useState<number>(4);
   const [generationSummary, setGenerationSummary] = useState<string | null>(null);
 
+  // Extra rounds & History saving states
+  const [showExtraRoundsModal, setShowExtraRoundsModal] = useState<boolean>(false);
+  const [extraRoundsCount, setExtraRoundsCount] = useState<number>(2);
+  const [isSavingHistory, setIsSavingHistory] = useState<boolean>(false);
+  const [savedSuccessNotification, setSavedSuccessNotification] = useState<string | null>(null);
+
+  // Custom Popups & Toast Notifications
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [showSaveHistoryModal, setShowSaveHistoryModal] = useState<boolean>(false);
+  const [showClearModal, setShowClearModal] = useState<boolean>(false);
+
+  const showToast = (toast: Omit<ToastMessage, 'id'>) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { ...toast, id }]);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   useEffect(() => {
+    setMounted(true);
     initPage();
   }, []);
 
@@ -109,20 +137,39 @@ export default function MatchesPage() {
 
   const handleGenerateMatches = async () => {
     if (selectedPlayerIds.length < 4) {
-      alert('Please select at least 4 active players for doubles matches.');
+      showToast({
+        type: 'error',
+        title: 'Need 4 Players',
+        message: 'Please select at least 4 active players for doubles matches.',
+      });
       return;
     }
-    if (!session) return;
 
     try {
       setGenerating(true);
+
+      // 1. Ensure we have an active, valid session
+      let currentSession = session;
+      if (!currentSession || currentSession.location?.includes('[COMPLETED]') || currentSession.status === 'COMPLETED') {
+        currentSession = await dataService.getOrCreateTodaySession();
+        setSession(currentSession);
+      }
+
+      if (!currentSession) {
+        throw new Error("Unable to establish today's match session.");
+      }
+
+      // 2. If active session already has matches on the board, clear them first for fresh optimal generation
+      if (matches.length > 0) {
+        await dataService.clearSessionMatches(currentSession.id);
+      }
 
       const payload = {
         playerIds: selectedPlayerIds,
         targetMatchesPerPlayer: generationMode === 'target' ? targetMatches : undefined,
         totalRounds: generationMode === 'rounds' ? totalRoundsInput : undefined,
         numberOfCourts: 1,
-        existingMatches: matches,
+        existingMatches: [], // Fresh optimal schedule starting at Round 1
       };
 
       const res = await fetch('/api/generate-schedule', {
@@ -140,7 +187,7 @@ export default function MatchesPage() {
 
       // Prepare DB match objects
       const newMatches = generated.map((gm: any) => ({
-        session_id: session.id,
+        session_id: currentSession.id,
         round_number: gm.round_number,
         court_number: gm.court_number,
         team_a_player1_id: gm.team_a_player1_id,
@@ -153,15 +200,169 @@ export default function MatchesPage() {
       }));
 
       await dataService.createMatches(newMatches);
-      await loadSessionMatches(session.id, members);
+      await loadSessionMatches(currentSession.id, members);
 
       setGenerationSummary(`Generated ${newMatches.length} optimal rounds!`);
+      showToast({
+        type: 'success',
+        title: 'Matches Ready!',
+        message: `Successfully generated ${newMatches.length} optimal rounds.`,
+      });
       setMobileTab('matches');
       setTimeout(() => setGenerationSummary(null), 4000);
     } catch (err: any) {
-      alert('Error generating matches: ' + err.message);
+      console.error('Error generating matches:', err);
+      showToast({
+        type: 'error',
+        title: 'Generation Failed',
+        message: err.message || 'Error generating matches.',
+      });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleGenerateExtraRounds = async (count: number) => {
+    let currentSession = session;
+    if (!currentSession || currentSession.location?.includes('[COMPLETED]') || currentSession.status === 'COMPLETED') {
+      currentSession = await dataService.getOrCreateTodaySession();
+      setSession(currentSession);
+    }
+    if (!currentSession) return;
+
+    try {
+      setGenerating(true);
+
+      // Collect active players: if selectedPlayerIds has at least 4, use them;
+      // otherwise use all players from current matches
+      let activeIds = selectedPlayerIds;
+      if (activeIds.length < 4) {
+        const playerIdsInMatches = new Set<string>();
+        matches.forEach((m) => {
+          playerIdsInMatches.add(m.team_a_player1_id);
+          playerIdsInMatches.add(m.team_a_player2_id);
+          playerIdsInMatches.add(m.team_b_player1_id);
+          playerIdsInMatches.add(m.team_b_player2_id);
+        });
+        activeIds = Array.from(playerIdsInMatches);
+      }
+
+      if (activeIds.length < 4) {
+        showToast({
+          type: 'error',
+          title: 'Need 4 Players',
+          message: 'Please select at least 4 active players to generate additional rounds.',
+        });
+        return;
+      }
+
+      const payload = {
+        playerIds: activeIds,
+        totalRounds: count,
+        numberOfCourts: 1,
+        existingMatches: matches, // Seeds penalty matrix so play counts are strictly balanced & repeat pairs are penalized
+      };
+
+      const res = await fetch('/api/generate-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate extra rounds.');
+      }
+
+      const generated = data.result.matches;
+      const newMatches = generated.map((gm: any) => ({
+        session_id: currentSession.id,
+        round_number: gm.round_number,
+        court_number: gm.court_number,
+        team_a_player1_id: gm.team_a_player1_id,
+        team_a_player2_id: gm.team_a_player2_id,
+        team_b_player1_id: gm.team_b_player1_id,
+        team_b_player2_id: gm.team_b_player2_id,
+        score_team_a: 0,
+        score_team_b: 0,
+        winning_team: 'PENDING' as WinningTeam,
+      }));
+
+      await dataService.createMatches(newMatches);
+      await loadSessionMatches(currentSession.id, members);
+
+      setShowExtraRoundsModal(false);
+      setGenerationSummary(`Added ${newMatches.length} fair extra rounds starting at Round ${newMatches[0]?.round_number}!`);
+      showToast({
+        type: 'success',
+        title: 'Extra Rounds Added!',
+        message: `Added ${newMatches.length} fair extra rounds starting at Round ${newMatches[0]?.round_number}!`,
+      });
+      setTimeout(() => setGenerationSummary(null), 5000);
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to Add Rounds',
+        message: err.message || 'Error generating extra rounds.',
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleOpenSaveHistoryModal = () => {
+    if (matches.length === 0) return;
+    const pendingMatches = matches.filter((m) => m.winning_team === 'PENDING');
+    if (pendingMatches.length > 0) {
+      showToast({
+        type: 'error',
+        title: 'Matches Incomplete',
+        message: `Cannot save to History yet. Please complete all ${matches.length} rounds first (${pendingMatches.length} pending).`,
+      });
+      return;
+    }
+    setShowSaveHistoryModal(true);
+  };
+
+  const handleConfirmSaveToHistory = async () => {
+    if (!session) return;
+    const pendingMatches = matches.filter((m) => m.winning_team === 'PENDING');
+    if (pendingMatches.length > 0) {
+      setShowSaveHistoryModal(false);
+      showToast({
+        type: 'error',
+        title: 'Cannot Save to History',
+        message: `All matches must be finished before archiving to History (${pendingMatches.length} pending).`,
+      });
+      return;
+    }
+
+    try {
+      setIsSavingHistory(true);
+      await dataService.completeSession(session.id);
+
+      // Reinitialize page: will create a fresh new session with empty matches!
+      await initPage();
+      setShowSaveHistoryModal(false);
+
+      showToast({
+        type: 'success',
+        title: 'Saved to History!',
+        message: "Session successfully saved! Matchboard has been reset for new games.",
+        action: {
+          label: 'View History',
+          href: '/history',
+        },
+        duration: 6000,
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        message: err.message || 'Failed to save session.',
+      });
+    } finally {
+      setIsSavingHistory(false);
     }
   };
 
@@ -171,6 +372,15 @@ export default function MatchesPage() {
     scoreB: number,
     winningTeam: WinningTeam
   ) => {
+    // Optimistic UI update: instantly update state so the card unlocks with no delay
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.id === matchId
+          ? { ...m, score_team_a: scoreA, score_team_b: scoreB, winning_team: winningTeam }
+          : m
+      )
+    );
+
     await dataService.updateMatch(matchId, {
       score_team_a: scoreA,
       score_team_b: scoreB,
@@ -186,14 +396,35 @@ export default function MatchesPage() {
     if (session) {
       await loadSessionMatches(session.id, members);
     }
+    showToast({
+      type: 'info',
+      title: 'Match Removed',
+      message: 'Round deleted from session.',
+    });
   };
 
-  const handleClearSession = async () => {
+  const handleOpenClearModal = () => {
+    setShowClearModal(true);
+  };
+
+  const handleConfirmClearSession = async () => {
     if (!session) return;
-    if (confirm("Clear all matches for today's session?")) {
+    try {
       await dataService.clearSessionMatches(session.id);
       await loadSessionMatches(session.id, members);
       setMobileTab('setup');
+      setShowClearModal(false);
+      showToast({
+        type: 'info',
+        title: 'Matchboard Cleared',
+        message: "All matches for today's session have been cleared.",
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Clear Failed',
+        message: err.message || 'Failed to clear matches.',
+      });
     }
   };
 
@@ -203,9 +434,27 @@ export default function MatchesPage() {
       ? Math.round((P * targetMatches) / 4)
       : totalRoundsInput;
   const restingCount = Math.max(0, P - 4);
+  const allMatchesCompleted = matches.length > 0 && matches.every((m) => m.winning_team !== 'PENDING');
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in">
+      {/* Success Notification Banner after saving session to history */}
+      {savedSuccessNotification && (
+        <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs sm:text-sm font-bold flex items-center justify-between gap-3 animate-fade-in shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            <span>{savedSuccessNotification}</span>
+          </div>
+          <Link
+            href="/history"
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 flex-shrink-0 active:scale-95 transition-transform"
+          >
+            <span>View History</span>
+            <HistoryIcon className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* Mobile Top Segmented Tab Switcher */}
       <div className="lg:hidden flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 shadow-md">
         <button
@@ -396,7 +645,7 @@ export default function MatchesPage() {
 
         {/* Right Column: Generated Matches & Live Scoring */}
         <div className={`lg:col-span-7 space-y-3 sm:space-y-4 ${mobileTab === 'matches' ? 'block' : 'hidden lg:block'}`}>
-          <div className="flex items-center justify-between pb-1">
+          <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
             <div>
               <h2 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
                 <span>Today&apos;s Match Rounds</span>
@@ -405,28 +654,95 @@ export default function MatchesPage() {
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400">
-                {session?.session_date || 'Today'} &bull; {session?.location || 'Local Court'}
+                {session?.session_date || 'Today'} &bull; {session?.location?.replace(' [COMPLETED]', '') || 'Local Court'}
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 onClick={() => setMobileTab('setup')}
                 className="lg:hidden text-xs text-emerald-400 hover:text-emerald-300 font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
               >
-                + Add / Edit
+                + Squad
               </button>
 
               {matches.length > 0 && (
-                <button
-                  onClick={handleClearSession}
-                  className="text-xs text-rose-400 hover:text-rose-300 font-medium px-2 py-1 rounded-lg hover:bg-rose-500/10 transition-colors"
-                >
-                  Clear
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraRoundsModal(true)}
+                    className="text-xs text-emerald-300 hover:text-white font-bold px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/30 flex items-center gap-1 transition-all active:scale-95"
+                    title="Generate additional fair rounds"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Rounds</span>
+                  </button>
+
+                  {allMatchesCompleted && (
+                    <button
+                      type="button"
+                      onClick={handleOpenSaveHistoryModal}
+                      disabled={isSavingHistory}
+                      className="text-xs text-amber-300 hover:text-white font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-600 border border-amber-500/30 flex items-center gap-1 transition-all active:scale-95 animate-fade-in"
+                      title="Permanently save current session to History"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>Save to History</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleOpenClearModal}
+                    className="text-xs text-rose-400 hover:text-rose-300 font-medium px-2 py-1 rounded-lg hover:bg-rose-500/10 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </>
               )}
             </div>
           </div>
+
+          {/* Prominent Session Completion Banner when all rounds finished */}
+          {allMatchesCompleted && (
+            <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/50 shadow-xl shadow-emerald-950/50 space-y-3 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                  <Trophy className="w-5 h-5 fill-emerald-400/20" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-1.5">
+                    <span>All {matches.length} Rounds Completed!</span>
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    All games have officially concluded. Save this session permanently to History or generate more fair rounds.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleOpenSaveHistoryModal}
+                  disabled={isSavingHistory}
+                  className="w-full py-2.5 px-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-400 hover:opacity-95 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Archive className="w-4 h-4" />
+                  <span>{isSavingHistory ? 'Saving to History...' : 'Permanently Save to History'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowExtraRoundsModal(true)}
+                  className="w-full py-2.5 px-4 rounded-xl sm:rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4 text-emerald-400" />
+                  <span>Generate More Rounds</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {matches.length === 0 ? (
             <div className="py-14 text-center bg-slate-900/40 border border-slate-800 rounded-2xl sm:rounded-3xl p-6 backdrop-blur-md">
@@ -462,7 +778,6 @@ export default function MatchesPage() {
                     restingMembers={restingMembers}
                     onSaveScore={handleSaveScore}
                     onDeleteMatch={handleDeleteMatch}
-                    onOpenScoreboard={(m) => setActiveScoringMatchId(m.id)}
                   />
                 );
               })}
@@ -471,21 +786,143 @@ export default function MatchesPage() {
         </div>
       </div>
 
-      {/* Full-Screen Court Scoreboard Modal (Rendered at Page Root to prevent CSS clipping) */}
-      {(() => {
-        const activeMatch = matches.find((m) => m.id === activeScoringMatchId);
-        if (!activeMatch) return null;
-        return (
-          <ScoreTracker
-            match={activeMatch}
-            onSaveScore={async (id, a, b, winner) => {
-              await handleSaveScore(id, a, b, winner);
-              setActiveScoringMatchId(null);
-            }}
-            onClose={() => setActiveScoringMatchId(null)}
-          />
-        );
-      })()}
+      {/* Modal: Generate More Rounds */}
+      {showExtraRoundsModal && mounted && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                  +
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-white">
+                    Generate More Rounds
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Add extra fair badminton rotations
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExtraRoundsModal(false)}
+                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-3 rounded-2xl border border-slate-800/80">
+              The algorithm evaluates all {matches.length} played rounds to balance player court times, prevent repeat pairs, and ensure fresh opponent matchups starting at <span className="font-mono text-emerald-400 font-bold">Round {matches.length + 1}</span>.
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300">
+                Number of Extra Rounds to Add:
+              </label>
+
+              {/* Stepper */}
+              <div className="flex items-center justify-between bg-slate-950 p-2 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setExtraRoundsCount((prev) => Math.max(1, prev - 1))}
+                  disabled={extraRoundsCount <= 1}
+                  className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center disabled:opacity-30 active:scale-95 text-lg font-bold"
+                >
+                  −
+                </button>
+
+                <div className="text-center font-mono">
+                  <span className="text-2xl font-black text-emerald-400">
+                    +{extraRoundsCount}
+                  </span>
+                  <span className="text-[11px] text-slate-400 ml-1.5 font-sans font-medium">
+                    {extraRoundsCount === 1 ? 'Round' : 'Rounds'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setExtraRoundsCount((prev) => Math.min(10, prev + 1))}
+                  disabled={extraRoundsCount >= 10}
+                  className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center disabled:opacity-30 active:scale-95 text-lg font-bold"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Presets */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-500 font-bold">Presets:</span>
+                {[1, 2, 3, 4].map((cnt) => (
+                  <button
+                    key={cnt}
+                    type="button"
+                    onClick={() => setExtraRoundsCount(cnt)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                      extraRoundsCount === cnt
+                        ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                        : 'bg-slate-800 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    +{cnt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowExtraRoundsModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateExtraRounds(extraRoundsCount)}
+                disabled={generating}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-black text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all"
+              >
+                {generating ? 'Generating...' : `Add +${extraRoundsCount} Rounds`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Toast Notification Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* In-App Confirmation Modal: Save to History */}
+      <ConfirmModal
+        isOpen={showSaveHistoryModal}
+        onClose={() => setShowSaveHistoryModal(false)}
+        onConfirm={handleConfirmSaveToHistory}
+        title="Permanently Save to History?"
+        description="Permanently save this session to History? Today's active matchboard will be securely cleared and reset for new games."
+        confirmLabel={isSavingHistory ? 'Saving...' : 'Save & Reset'}
+        cancelLabel="Cancel"
+        variant="primary"
+        iconType="archive"
+        isLoading={isSavingHistory}
+      />
+
+      {/* In-App Confirmation Modal: Clear Matchboard */}
+      <ConfirmModal
+        isOpen={showClearModal}
+        onClose={() => setShowClearModal(false)}
+        onConfirm={handleConfirmClearSession}
+        title="Clear All Matches?"
+        description="Are you sure you want to clear all matches for today's session? All scores and generated rounds will be wiped out."
+        confirmLabel="Clear Matches"
+        cancelLabel="Keep Matches"
+        variant="danger"
+        iconType="danger"
+      />
     </div>
   );
 }

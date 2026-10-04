@@ -20,8 +20,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   session_date DATE DEFAULT CURRENT_DATE,
   location VARCHAR(100) DEFAULT 'Local Court',
+  status VARCHAR(20) DEFAULT 'ACTIVE',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Migration if table already exists
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE';
 
 -- 3. Matches Table
 CREATE TABLE IF NOT EXISTS matches (

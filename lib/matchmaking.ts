@@ -230,3 +230,161 @@ function getCombinations<T>(array: T[], size: number): T[][] {
   helper(0, []);
   return result;
 }
+
+export interface BadmintonMatchStatus {
+  state: 'NOT_STARTED' | 'TIED' | 'LEADING_A' | 'LEADING_B' | 'DEUCE' | 'MATCH_POINT_A' | 'MATCH_POINT_B' | 'WON_A' | 'WON_B';
+  label: string;
+  badgeType: 'won' | 'deuce' | 'match_point' | 'leading' | 'tied';
+  hasWon: boolean;
+  winner?: 'TEAM_A' | 'TEAM_B';
+  lead?: number;
+}
+
+/**
+ * Validates if a score satisfies standard Badminton winning criteria:
+ * - A team must reach at least targetScore (default 21) AND have a 2-point lead, OR
+ * - A team must reach 30 points (sudden death cap at 30, e.g. 30-29).
+ */
+export function isNaturalBadmintonWin(
+  scoreA: number,
+  scoreB: number,
+  targetScore: number = 21
+): { won: boolean; winner?: 'TEAM_A' | 'TEAM_B' } {
+  // Sudden-death cap at 30 points
+  if (scoreA >= 30) return { won: true, winner: 'TEAM_A' };
+  if (scoreB >= 30) return { won: true, winner: 'TEAM_B' };
+
+  // Standard win: >= targetScore and >= 2 lead
+  if (scoreA >= targetScore && scoreA - scoreB >= 2) return { won: true, winner: 'TEAM_A' };
+  if (scoreB >= targetScore && scoreB - scoreA >= 2) return { won: true, winner: 'TEAM_B' };
+
+  return { won: false };
+}
+
+/**
+ * Calculates real-time Badminton Match Status:
+ * - Won: Only after match point if a team scores the extra point and wins (>=21 with 2-point lead or 30 max)
+ * - Deuce: When both teams reach 20-20 or equal at 20+
+ * - Match Point: When a team is 1 point away from winning (20-19, 21-20 in deuce, 29-28)
+ * - Leading: When a team has more points before winning (1-0, 5-2, 18-15)
+ * - Tied: When scores are equal below 20
+ */
+export function getBadmintonMatchStatus(
+  scoreA: number,
+  scoreB: number,
+  officialWinner: 'TEAM_A' | 'TEAM_B' | 'PENDING',
+  targetScore: number = 21
+): BadmintonMatchStatus {
+  // 1. If match has been officially confirmed/locked as won by user
+  if (officialWinner === 'TEAM_A') {
+    return {
+      state: 'WON_A',
+      label: 'Team A Won',
+      badgeType: 'won',
+      hasWon: true,
+      winner: 'TEAM_A',
+      lead: scoreA - scoreB,
+    };
+  }
+  if (officialWinner === 'TEAM_B') {
+    return {
+      state: 'WON_B',
+      label: 'Team B Won',
+      badgeType: 'won',
+      hasWon: true,
+      winner: 'TEAM_B',
+      lead: scoreB - scoreA,
+    };
+  }
+
+  // 2. When officialWinner is 'PENDING', the match is in progress / reopened / UNLOCKED.
+  // hasWon is strictly FALSE so points changer is unlocked and 'Mark Winner' is displayed!
+
+  // Check if scores reached deuce: Both 20 or higher and equal
+  if (scoreA >= 20 && scoreB >= 20 && scoreA === scoreB) {
+    return {
+      state: 'DEUCE',
+      label: `Deuce (${scoreA}-${scoreB})`,
+      badgeType: 'deuce',
+      hasWon: false,
+    };
+  }
+
+  // Check if scores reached match point: Exactly 1 point away from victory
+  const isMatchPointA =
+    ((scoreA === 20 && scoreB <= 19) || (scoreA >= 21 && scoreA - scoreB === 1)) && scoreA < 30;
+  const isMatchPointB =
+    ((scoreB === 20 && scoreA <= 19) || (scoreB >= 21 && scoreB - scoreA === 1)) && scoreB < 30;
+
+  if (isMatchPointA) {
+    return {
+      state: 'MATCH_POINT_A',
+      label: 'Match Point (Team A)',
+      badgeType: 'match_point',
+      hasWon: false,
+      lead: scoreA - scoreB,
+    };
+  }
+
+  if (isMatchPointB) {
+    return {
+      state: 'MATCH_POINT_B',
+      label: 'Match Point (Team B)',
+      badgeType: 'match_point',
+      hasWon: false,
+      lead: scoreB - scoreA,
+    };
+  }
+
+  // 2. Natural win: If score satisfies standard badminton victory (>=21 with 2-point lead or sudden-death 30)
+  const naturalWin = isNaturalBadmintonWin(scoreA, scoreB, targetScore);
+  if (naturalWin.won && naturalWin.winner) {
+    const isA = naturalWin.winner === 'TEAM_A';
+    return {
+      state: isA ? 'WON_A' : 'WON_B',
+      label: isA ? 'Team A Won' : 'Team B Won',
+      badgeType: 'won',
+      hasWon: true,
+      winner: naturalWin.winner,
+      lead: Math.abs(scoreA - scoreB),
+    };
+  }
+
+  // Leading conditions (e.g. 1-0, 5-3, 18-14)
+  if (scoreA > scoreB) {
+    return {
+      state: 'LEADING_A',
+      label: `Team A Leading (${scoreA}-${scoreB})`,
+      badgeType: 'leading',
+      hasWon: false,
+      lead: scoreA - scoreB,
+    };
+  }
+
+  if (scoreB > scoreA) {
+    return {
+      state: 'LEADING_B',
+      label: `Team B Leading (${scoreB}-${scoreA})`,
+      badgeType: 'leading',
+      hasWon: false,
+      lead: scoreB - scoreA,
+    };
+  }
+
+  // Tied / Not started
+  if (scoreA === 0 && scoreB === 0) {
+    return {
+      state: 'NOT_STARTED',
+      label: 'In Progress',
+      badgeType: 'tied',
+      hasWon: false,
+    };
+  }
+
+  return {
+    state: 'TIED',
+    label: `Tied (${scoreA}-${scoreB})`,
+    badgeType: 'tied',
+    hasWon: false,
+  };
+}
