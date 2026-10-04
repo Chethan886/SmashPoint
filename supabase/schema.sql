@@ -7,13 +7,18 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. Members Table
+-- 1. Members Table
 CREATE TABLE IF NOT EXISTS members (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   nickname VARCHAR(50),
   avatar_color VARCHAR(20) DEFAULT '#10b981',
+  avatar_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Migration if table already exists
+ALTER TABLE members ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 -- 2. Match Sessions Table
 CREATE TABLE IF NOT EXISTS sessions (
@@ -68,6 +73,7 @@ SELECT
   m.name,
   m.nickname,
   m.avatar_color,
+  m.avatar_url,
   COUNT(DISTINCT match_participants.match_id) AS total_matches,
   COUNT(CASE WHEN match_participants.is_winner THEN 1 END) AS wins,
   COUNT(CASE WHEN NOT match_participants.is_winner AND match_participants.winning_team != 'PENDING' THEN 1 END) AS losses,
