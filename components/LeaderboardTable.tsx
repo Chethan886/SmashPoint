@@ -20,7 +20,8 @@ import {
   ChevronRight,
   ChevronDown,
   Check,
-  X
+  X,
+  ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -312,131 +313,185 @@ export default function LeaderboardTable({
         </div>
       </div>
 
-      {/* 2. CROWN SPOTLIGHT HERO BANNER - Only shown when matches were played on this date */}
+      {/* 2. CROWN SPOTLIGHT HERO BANNER - Centered Big Picture with all details below */}
       {hasMatches && isGayLordTab && gayLord && (
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-pink-950/50 via-purple-950/30 to-slate-900 border border-pink-500/30 p-4 sm:p-5 shadow-lg shadow-pink-500/10 backdrop-blur-xl">
-          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-4 text-center sm:text-left w-full sm:w-auto">
-              <div className="relative shrink-0 mx-auto sm:mx-0">
-                <Link
-                  href={`/stats?player=${gayLord.member_id}`}
-                  className="block group transition-transform hover:scale-105"
-                  title={`View ${gayLord.name}'s deep stats`}
-                >
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-pink-500 via-fuchsia-400 to-purple-500 p-[2px] shadow-lg shadow-pink-500/30 group-hover:ring-2 group-hover:ring-pink-400">
-                    <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center overflow-hidden">
-                      {gayLord.avatar_url ? (
-                        <img src={gayLord.avatar_url} alt={gayLord.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-2xl">👑</span>
-                      )}
-                    </div>
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-pink-950/40 via-purple-950/25 to-slate-950 border border-pink-500/30 p-6 sm:p-8 shadow-2xl shadow-pink-500/10 backdrop-blur-xl">
+          {/* Ambient Glows */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-pink-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col items-center text-center">
+            {/* 1. Big Picture at the Center */}
+            <div className="relative group mb-4">
+              <Link
+                href={`/stats?player=${gayLord.member_id}`}
+                className="block transition-transform hover:scale-105 active:scale-95 duration-200"
+                title={`View ${gayLord.name}'s deep stats`}
+              >
+                <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl bg-gradient-to-tr from-pink-500 via-fuchsia-400 to-purple-500 p-[3px] shadow-2xl shadow-pink-500/40 group-hover:shadow-pink-500/60 ring-4 ring-pink-500/20 transition-all duration-300">
+                  <div className="w-full h-full bg-slate-950 rounded-[21px] flex items-center justify-center overflow-hidden">
+                    {gayLord.avatar_url ? (
+                      <img
+                        src={gayLord.avatar_url}
+                        alt={gayLord.name}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <span className="text-4xl sm:text-5xl">👑</span>
+                    )}
                   </div>
-                </Link>
-                <span className="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-pink-500 text-white shadow ring-1 ring-white/30">
-                  BOTTOM
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">
-                  <Crown className="w-3 h-3 text-pink-400 fill-pink-400" />
-                  <span>Reigning Gay Lord of the Court</span>
                 </div>
-                <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 justify-center sm:justify-start">
-                  <Link
-                    href={`/stats?player=${gayLord.member_id}`}
-                    className="hover:text-pink-300 transition-colors hover:underline underline-offset-4 decoration-pink-500"
-                    title={`View ${gayLord.name}'s deep stats`}
-                  >
-                    {gayLord.name}
-                  </Link>
-                  {gayLord.nickname && (
-                    <span className="text-xs sm:text-sm text-pink-300/80 font-normal">
-                      &quot;{gayLord.nickname}&quot;
-                    </span>
-                  )}
-                </h3>
-                <p className="text-[11px] sm:text-xs text-pink-200/80">
-                  Person at the bottom proudly takes the wooden crown! 💅👑
-                </p>
+              </Link>
+              {/* Badge under picture */}
+              <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg ring-2 ring-pink-300/40 uppercase tracking-wider whitespace-nowrap">
+                💅 BOTTOM
+              </span>
+            </div>
+
+            {/* 2. Reigning Title Badge */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm mt-1 mb-2">
+              <Crown className="w-3.5 h-3.5 text-pink-400 fill-pink-400" />
+              <span>Reigning Gay Lord of the Court</span>
+            </div>
+
+            {/* 3. Player Name & Nickname */}
+            <h3 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2 justify-center flex-wrap">
+              <Link
+                href={`/stats?player=${gayLord.member_id}`}
+                className="hover:text-pink-300 transition-colors hover:underline underline-offset-4 decoration-pink-500"
+                title={`View ${gayLord.name}'s deep stats`}
+              >
+                {gayLord.name}
+              </Link>
+              {gayLord.nickname && (
+                <span className="text-sm sm:text-base text-pink-300/80 font-normal">
+                  &quot;{gayLord.nickname}&quot;
+                </span>
+              )}
+            </h3>
+
+            {/* 4. Subtitle / Motto */}
+            <p className="text-xs sm:text-sm text-pink-200/80 max-w-sm sm:max-w-md mx-auto mt-1">
+              Person at the bottom proudly takes the wooden crown! 💅 👑
+            </p>
+
+            {/* 5. Stats Row (Losses | Wins | Gay %) */}
+            <div className="flex items-center gap-4 sm:gap-8 bg-slate-950/85 px-6 py-3 rounded-2xl border border-pink-500/25 text-xs font-mono shadow-inner mt-4">
+              <div className="text-center px-2">
+                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold tracking-wider">Losses</div>
+                <div className="font-extrabold text-pink-400 text-base sm:text-xl">{gayLord.losses}</div>
+              </div>
+              <div className="h-7 w-px bg-slate-800" />
+              <div className="text-center px-2">
+                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold tracking-wider">Wins</div>
+                <div className="font-extrabold text-slate-400 text-base sm:text-xl">{gayLord.wins}</div>
+              </div>
+              <div className="h-7 w-px bg-slate-800" />
+              <div className="text-center px-2">
+                <div className="text-[10px] text-pink-300 uppercase font-sans font-semibold tracking-wider">Gay %</div>
+                <div className="font-extrabold text-pink-400 text-base sm:text-xl">{getGayRate(gayLord)}%</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-pink-500/20 text-xs font-mono w-full sm:w-auto justify-around sm:justify-end">
-              <div className="text-center px-2">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Losses</div>
-                <div className="font-extrabold text-pink-400 text-sm sm:text-base">{gayLord.losses}</div>
-              </div>
-              <div className="h-6 w-px bg-slate-800" />
-              <div className="text-center px-2">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Wins</div>
-                <div className="font-extrabold text-slate-400 text-sm sm:text-base">{gayLord.wins}</div>
-              </div>
-              <div className="h-6 w-px bg-slate-800" />
-              <div className="text-center px-2">
-                <div className="text-[10px] text-pink-300 uppercase font-sans font-semibold">Gay %</div>
-                <div className="font-extrabold text-pink-400 text-sm sm:text-base">{getGayRate(gayLord)}%</div>
-              </div>
-            </div>
+            {/* 6. Link to Deep Stats */}
+            <Link
+              href={`/stats?player=${gayLord.member_id}`}
+              className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-pink-400 hover:text-pink-300 hover:underline underline-offset-4 transition-all"
+            >
+              <span>View Player Analytics</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       )}
 
       {hasMatches && !isGayLordTab && smashLord && (
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-amber-950/50 via-yellow-950/30 to-slate-900 border border-amber-500/30 p-4 sm:p-5 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
-          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-4 text-center sm:text-left w-full sm:w-auto">
-              <div className="relative shrink-0 mx-auto sm:mx-0">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 p-[2px] shadow-lg shadow-amber-500/30">
-                  <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center overflow-hidden">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-amber-950/40 via-yellow-950/25 to-slate-950 border border-amber-500/30 p-6 sm:p-8 shadow-2xl shadow-amber-500/10 backdrop-blur-xl">
+          {/* Ambient Glows */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col items-center text-center">
+            {/* 1. Big Picture at the Center */}
+            <div className="relative group mb-4">
+              <Link
+                href={`/stats?player=${smashLord.member_id}`}
+                className="block transition-transform hover:scale-105 active:scale-95 duration-200"
+                title={`View ${smashLord.name}'s deep stats`}
+              >
+                <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl bg-gradient-to-tr from-amber-400 via-yellow-300 to-emerald-400 p-[3px] shadow-2xl shadow-amber-500/40 group-hover:shadow-amber-500/60 ring-4 ring-amber-500/20 transition-all duration-300">
+                  <div className="w-full h-full bg-slate-950 rounded-[21px] flex items-center justify-center overflow-hidden">
                     {smashLord.avatar_url ? (
-                      <img src={smashLord.avatar_url} alt={smashLord.name} className="w-full h-full object-cover" />
+                      <img
+                        src={smashLord.avatar_url}
+                        alt={smashLord.name}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
                     ) : (
-                      <span className="text-2xl">⚡</span>
+                      <span className="text-4xl sm:text-5xl">⚡</span>
                     )}
                   </div>
                 </div>
-                <span className="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-slate-950 shadow ring-1 ring-slate-950/50">
-                  #1
+              </Link>
+              {/* Badge under picture */}
+              <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 shadow-lg ring-2 ring-amber-300/60 uppercase tracking-wider whitespace-nowrap">
+                ⚡ #1 WINNER
+              </span>
+            </div>
+
+            {/* 2. Reigning Title Badge */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm mt-1 mb-2">
+              <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              <span>Supreme Smash Lord of the Court</span>
+            </div>
+
+            {/* 3. Player Name & Nickname */}
+            <h3 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2 justify-center flex-wrap">
+              <Link
+                href={`/stats?player=${smashLord.member_id}`}
+                className="hover:text-amber-300 transition-colors hover:underline underline-offset-4 decoration-amber-500"
+                title={`View ${smashLord.name}'s deep stats`}
+              >
+                {smashLord.name}
+              </Link>
+              {smashLord.nickname && (
+                <span className="text-sm sm:text-base text-amber-300/80 font-normal">
+                  &quot;{smashLord.nickname}&quot;
                 </span>
+              )}
+            </h3>
+
+            {/* 4. Subtitle / Motto */}
+            <p className="text-xs sm:text-sm text-amber-200/80 max-w-sm sm:max-w-md mx-auto mt-1">
+              Undisputed tournament champion ruling the court with fire and smashes! 🔥 ⚡
+            </p>
+
+            {/* 5. Stats Row (Wins | Losses | Win Rate) */}
+            <div className="flex items-center gap-4 sm:gap-8 bg-slate-950/85 px-6 py-3 rounded-2xl border border-amber-500/25 text-xs font-mono shadow-inner mt-4">
+              <div className="text-center px-2">
+                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold tracking-wider">Wins</div>
+                <div className="font-extrabold text-emerald-400 text-base sm:text-xl">{smashLord.wins}</div>
               </div>
-              <div className="space-y-0.5">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  <Trophy className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span>Supreme Smash Lord of the Court</span>
-                </div>
-                <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 justify-center sm:justify-start">
-                  <span>{smashLord.name}</span>
-                  {smashLord.nickname && (
-                    <span className="text-xs sm:text-sm text-amber-300/80 font-normal">
-                      &quot;{smashLord.nickname}&quot;
-                    </span>
-                  )}
-                </h3>
-                <p className="text-[11px] sm:text-xs text-amber-200/80">
-                  Undisputed tournament champion ruling the court with fire and smashes! 🔥
-                </p>
+              <div className="h-7 w-px bg-slate-800" />
+              <div className="text-center px-2">
+                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold tracking-wider">Losses</div>
+                <div className="font-extrabold text-rose-400 text-base sm:text-xl">{smashLord.losses}</div>
+              </div>
+              <div className="h-7 w-px bg-slate-800" />
+              <div className="text-center px-2">
+                <div className="text-[10px] text-amber-300 uppercase font-sans font-semibold tracking-wider">Win Rate</div>
+                <div className="font-extrabold text-amber-400 text-base sm:text-xl">{smashLord.win_rate}%</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-amber-500/20 text-xs font-mono w-full sm:w-auto justify-around sm:justify-end">
-              <div className="text-center px-2">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Wins</div>
-                <div className="font-extrabold text-emerald-400 text-sm sm:text-base">{smashLord.wins}</div>
-              </div>
-              <div className="h-6 w-px bg-slate-800" />
-              <div className="text-center px-2">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Losses</div>
-                <div className="font-extrabold text-rose-400 text-sm sm:text-base">{smashLord.losses}</div>
-              </div>
-              <div className="h-6 w-px bg-slate-800" />
-              <div className="text-center px-2">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Win Rate</div>
-                <div className="font-extrabold text-amber-400 text-sm sm:text-base">{smashLord.win_rate}%</div>
-              </div>
-            </div>
+            {/* 6. Link to Deep Stats */}
+            <Link
+              href={`/stats?player=${smashLord.member_id}`}
+              className="inline-flex items-center gap-1.5 mt-3 text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline underline-offset-4 transition-all"
+            >
+              <span>View Player Analytics</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       )}
