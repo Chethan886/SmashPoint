@@ -21,7 +21,10 @@ import {
   ChevronDown,
   Check,
   X,
-  ArrowRight
+  ArrowRight,
+  MapPin,
+  Clock,
+  Filter
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -61,6 +64,12 @@ export default function LeaderboardTable({
   const [mounted, setMounted] = useState(false);
   const calendarRef = useRef<HTMLDivElement>(null);
   const mobileModalRef = useRef<HTMLDivElement>(null);
+
+  // Weekend Sessions Quick Picker State (Fast Weekend Sessions Navigator)
+  const [isSessionPickerOpen, setIsSessionPickerOpen] = useState(false);
+  const [weekendsOnlyFilter, setWeekendsOnlyFilter] = useState(false);
+  const sessionPickerRef = useRef<HTMLDivElement>(null);
+  const mobileSessionPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -108,6 +117,26 @@ export default function LeaderboardTable({
     };
   }, [isCalendarOpen]);
 
+  // Click outside listener for Session Picker
+  useEffect(() => {
+    const handleClickOutsideSession = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (sessionPickerRef.current && sessionPickerRef.current.contains(target)) {
+        return;
+      }
+      if (mobileSessionPickerRef.current && mobileSessionPickerRef.current.contains(target)) {
+        return;
+      }
+      setIsSessionPickerOpen(false);
+    };
+    if (isSessionPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutsideSession);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideSession);
+    };
+  }, [isSessionPickerOpen]);
+
   const prevMonth = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (viewMonth === 0) {
@@ -140,6 +169,54 @@ export default function LeaderboardTable({
 
   const matchDatesSet = useMemo(() => new Set(matchDates), [matchDates]);
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // Enriched Sessions list tailored for weekend matchday navigation
+  const enrichedSessions = useMemo(() => {
+    const sorted = [...matchDates].sort().reverse();
+    const today = new Date().toISOString().split('T')[0];
+
+    return sorted.map((dateStr, idx) => {
+      const d = new Date(dateStr + 'T00:00:00');
+      const dayOfWeek = d.getDay(); // 0 is Sun, 6 is Sat
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const dayOfWeekName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayOfWeekFull = d.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedDate = d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const sess = sessions.find((s) => s.session_date === dateStr);
+
+      return {
+        date: dateStr,
+        dayOfWeekName,
+        dayOfWeekFull,
+        isWeekend,
+        formattedDate,
+        location: sess?.location?.replace('[COMPLETED]', '').trim() || undefined,
+        isLatest: idx === 0,
+        isToday: dateStr === today,
+      };
+    });
+  }, [matchDates, sessions]);
+
+  // Filtered sessions (support filtering by weekends only)
+  const filteredSessions = useMemo(() => {
+    if (!weekendsOnlyFilter) return enrichedSessions;
+    return enrichedSessions.filter((s) => s.isWeekend);
+  }, [enrichedSessions, weekendsOnlyFilter]);
+
+  // Fast steppers (older / newer session relative to current)
+  const currentSessionIndex = enrichedSessions.findIndex((s) => s.date === currentDate);
+  const olderSession = currentSessionIndex >= 0 && currentSessionIndex < enrichedSessions.length - 1
+    ? enrichedSessions[currentSessionIndex + 1]
+    : null;
+  const newerSession = currentSessionIndex > 0
+    ? enrichedSessions[currentSessionIndex - 1]
+    : null;
+
+  const currentSessionInfo = enrichedSessions.find((s) => s.date === currentDate);
 
   const getDateKey = (day: number) => {
     const m = (viewMonth + 1).toString().padStart(2, '0');
@@ -496,13 +573,17 @@ export default function LeaderboardTable({
         </div>
       )}
 
-      {/* 3. Controls: Daily vs All-Time Toggle + Calendar Date Picker + Search */}
-      <div className={`relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-900/80 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-800 shadow-lg backdrop-blur-md ${isCalendarOpen ? 'z-40' : 'z-10'}`}>
-        {/* Toggle Pills - Full width on mobile: All-Time first, then Daily */}
+      {/* 3. Controls: All-Time vs Weekend Sessions + Stepper + Calendar Option + Search */}
+      <div className={`relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-900/80 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-800 shadow-lg backdrop-blur-md ${isCalendarOpen || isSessionPickerOpen ? 'z-40' : 'z-10'}`}>
+        {/* Toggle Pills: All-Time first, then Sessions */}
         <div className="grid grid-cols-2 bg-slate-950 p-1 rounded-xl sm:rounded-2xl border border-slate-800 w-full sm:w-auto">
           <button
             type="button"
-            onClick={() => handleDateChange(undefined)}
+            onClick={() => {
+              handleDateChange(undefined);
+              setIsCalendarOpen(false);
+              setIsSessionPickerOpen(false);
+            }}
             className={`flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition-all ${
               !currentDate
                 ? isGayLordTab 
@@ -518,11 +599,13 @@ export default function LeaderboardTable({
           <button
             type="button"
             onClick={() => {
-              const today = new Date().toISOString().split('T')[0];
-              const defaultDailyDate = matchDates.includes(today)
-                ? today
-                : (matchDates.length > 0 ? matchDates[matchDates.length - 1] : today);
-              handleDateChange(defaultDailyDate);
+              if (!currentDate) {
+                const today = new Date().toISOString().split('T')[0];
+                const defaultDailyDate = matchDates.includes(today)
+                  ? today
+                  : (enrichedSessions.length > 0 ? enrichedSessions[0].date : today);
+                handleDateChange(defaultDailyDate);
+              }
             }}
             className={`flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition-all ${
               currentDate
@@ -532,51 +615,244 @@ export default function LeaderboardTable({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Daily</span>
+            <Zap className="w-3.5 h-3.5" />
+            <span>Sessions</span>
           </button>
         </div>
 
-        {/* Right side: Interactive Calendar Popover with green match highlights + search input */}
-        <div className="flex items-center gap-2">
+        {/* Right side: Session Stepper + Weekend Sessions Dropdown + Calendar Option + Search */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
           {currentDate && (
-            <div className={`relative flex-1 sm:flex-none ${isCalendarOpen ? 'z-50' : ''}`} ref={calendarRef}>
+            <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
+              {/* Stepper: Hop to Older Session */}
               <button
                 type="button"
-                onClick={() => setIsCalendarOpen((prev) => !prev)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border text-xs font-semibold shadow-sm transition-all w-full sm:w-auto justify-between sm:justify-start ${
-                  isCalendarOpen
-                    ? isGayLordTab 
-                      ? 'border-pink-500 ring-2 ring-pink-500/20 text-white' 
-                      : 'border-emerald-500 ring-2 ring-emerald-500/20 text-white'
-                    : 'border-slate-800 text-slate-200 hover:border-slate-700'
+                disabled={!olderSession}
+                onClick={() => olderSession && handleDateChange(olderSession.date)}
+                className={`p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold transition-all flex items-center justify-center ${
+                  olderSession
+                    ? 'text-slate-300 hover:text-white hover:border-slate-700 active:scale-95'
+                    : 'text-slate-700 cursor-not-allowed opacity-40'
                 }`}
-                title="Open calendar to view match dates"
+                title={olderSession ? `Previous: ${olderSession.formattedDate}` : 'No earlier sessions recorded'}
               >
-                <div className="flex items-center gap-1.5">
-                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${isGayLordTab ? 'text-pink-400' : 'text-emerald-400'}`} />
-                  <span>
-                    {new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  {matchDatesSet.has(currentDate) && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      Match Day
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${
-                      isCalendarOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </div>
+                <ChevronLeft className="w-4 h-4" />
               </button>
+
+              {/* Weekend Sessions Quick Picker Dropdown */}
+              <div className="relative flex-1 sm:flex-none" ref={sessionPickerRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSessionPickerOpen((prev) => !prev);
+                    setIsCalendarOpen(false);
+                  }}
+                  className={`flex items-center justify-between sm:justify-start gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border text-xs font-semibold shadow-sm transition-all w-full sm:w-auto ${
+                    isSessionPickerOpen
+                      ? isGayLordTab 
+                        ? 'border-pink-500 ring-2 ring-pink-500/20 text-white' 
+                        : 'border-emerald-500 ring-2 ring-emerald-500/20 text-white'
+                      : 'border-slate-800 text-slate-200 hover:border-slate-700'
+                  }`}
+                  title="Quick-pick weekend matchday sessions"
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-sm">🏸</span>
+                    <span className="font-bold truncate">
+                      {currentSessionInfo 
+                        ? `${currentSessionInfo.dayOfWeekName}, ${currentSessionInfo.formattedDate}`
+                        : new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                      }
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {currentSessionInfo?.isWeekend && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        Weekend
+                      </span>
+                    )}
+                    <ChevronDown
+                      className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${
+                        isSessionPickerOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {/* Desktop Dropdown for Weekend Sessions Picker */}
+                {isSessionPickerOpen && (
+                  <div
+                    className="hidden sm:block absolute top-full mt-2 left-0 z-[100] w-80 p-3.5 rounded-2xl bg-[#090d16] border border-slate-700 shadow-2xl shadow-black ring-1 ring-slate-700/60 animate-fade-in"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">🏸</span>
+                        <span className="text-xs font-extrabold text-white">Weekend Match Sessions</span>
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">
+                        {enrichedSessions.length} total
+                      </span>
+                    </div>
+
+                    {/* Filter Pills: All vs Weekends Only */}
+                    <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800/80 mb-2.5 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setWeekendsOnlyFilter(false)}
+                        className={`py-1 rounded-lg transition-all ${
+                          !weekendsOnlyFilter
+                            ? 'bg-slate-800 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        All Sessions
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWeekendsOnlyFilter(true)}
+                        className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                          weekendsOnlyFilter
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>Weekends Only</span>
+                      </button>
+                    </div>
+
+                    {/* List of Sessions */}
+                    <div className="max-h-60 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
+                      {filteredSessions.length === 0 ? (
+                        <div className="text-center py-6 text-xs text-slate-400">
+                          No weekend match sessions found.
+                        </div>
+                      ) : (
+                        filteredSessions.map((sess) => {
+                          const isSelected = currentDate === sess.date;
+                          return (
+                            <button
+                              key={sess.date}
+                              type="button"
+                              onClick={() => {
+                                handleDateChange(sess.date);
+                                setIsSessionPickerOpen(false);
+                              }}
+                              className={`w-full text-left p-2 rounded-xl border transition-all flex items-center justify-between group ${
+                                isSelected
+                                  ? isGayLordTab
+                                    ? 'bg-pink-950/40 border-pink-500/50 shadow-sm'
+                                    : 'bg-emerald-950/40 border-emerald-500/50 shadow-sm'
+                                  : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/60 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center shrink-0 font-mono ${
+                                  sess.isWeekend
+                                    ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                                    : 'bg-slate-800 border border-slate-700 text-slate-300'
+                                }`}>
+                                  <span className="text-[9px] font-black leading-none uppercase">{sess.dayOfWeekName}</span>
+                                  <span className="text-xs font-black leading-none mt-0.5">{sess.date.split('-')[2]}</span>
+                                </div>
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors truncate">
+                                      {sess.formattedDate}
+                                    </span>
+                                    {sess.isWeekend && (
+                                      <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                        WE
+                                      </span>
+                                    )}
+                                    {sess.isLatest && (
+                                      <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                                        Latest
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                                    {sess.location ? (
+                                      <>
+                                        <MapPin className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                        <span className="truncate">{sess.location}</span>
+                                      </>
+                                    ) : (
+                                      <span>Matchday Session</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isSelected && (
+                                <Check className={`w-4 h-4 shrink-0 ${isGayLordTab ? 'text-pink-400' : 'text-emerald-400'}`} />
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Footer switch to full calendar */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSessionPickerOpen(false);
+                          setIsCalendarOpen(true);
+                        }}
+                        className="w-full text-center py-1.5 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-slate-300 hover:text-white border border-slate-800 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Open Full Month Calendar</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Stepper: Hop to Newer Session */}
+              <button
+                type="button"
+                disabled={!newerSession}
+                onClick={() => newerSession && handleDateChange(newerSession.date)}
+                className={`p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold transition-all flex items-center justify-center ${
+                  newerSession
+                    ? 'text-slate-300 hover:text-white hover:border-slate-700 active:scale-95'
+                    : 'text-slate-700 cursor-not-allowed opacity-40'
+                }`}
+                title={newerSession ? `Next: ${newerSession.formattedDate}` : 'Already on newest session'}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Calendar Toggle Button - Preserved as Alternative Option */}
+              <div className={`relative shrink-0 ${isCalendarOpen ? 'z-50' : ''}`} ref={calendarRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCalendarOpen((prev) => !prev);
+                    setIsSessionPickerOpen(false);
+                  }}
+                  className={`p-2 rounded-xl bg-slate-950 border text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5 ${
+                    isCalendarOpen
+                      ? isGayLordTab 
+                        ? 'border-pink-500 ring-2 ring-pink-500/20 text-white' 
+                        : 'border-emerald-500 ring-2 ring-emerald-500/20 text-white'
+                      : 'border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                  }`}
+                  title="Open calendar to view match dates"
+                >
+                  <Calendar className={`w-4 h-4 shrink-0 ${isGayLordTab ? 'text-pink-400' : 'text-emerald-400'}`} />
+                  <span className="hidden md:inline text-[11px] font-bold">Calendar</span>
+                </button>
 
               {/* On Desktop: Anchored Dropdown (sm:block) with high z-index */}
               {isCalendarOpen && (
@@ -874,6 +1150,7 @@ export default function LeaderboardTable({
                 </div>,
                 document.body
               )}
+              </div>
             </div>
           )}
 
@@ -891,6 +1168,129 @@ export default function LeaderboardTable({
           </div>
         </div>
       </div>
+
+      {/* 3.1 Mobile Modal for Weekend Sessions Picker */}
+      {isSessionPickerOpen && mounted && typeof document !== 'undefined' && createPortal(
+        <div className="sm:hidden fixed inset-0 z-[99999] flex items-center justify-center p-3">
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setIsSessionPickerOpen(false)}
+          />
+          <div
+            ref={mobileSessionPickerRef}
+            className="relative z-10 w-full max-w-sm p-4 rounded-3xl bg-[#090d16] border border-slate-700 shadow-2xl shadow-black ring-1 ring-slate-700/80 animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg">🏸</span>
+                <span className="text-sm font-extrabold text-white">Weekend Match Sessions</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSessionPickerOpen(false)}
+                className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800/80 mb-3 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setWeekendsOnlyFilter(false)}
+                className={`py-1.5 rounded-lg transition-all ${
+                  !weekendsOnlyFilter ? 'bg-slate-800 text-white' : 'text-slate-400'
+                }`}
+              >
+                All ({enrichedSessions.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeekendsOnlyFilter(true)}
+                className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  weekendsOnlyFilter ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400'
+                }`}
+              >
+                <span>Weekends Only</span>
+              </button>
+            </div>
+
+            {/* Sessions list */}
+            <div className="max-h-64 overflow-y-auto space-y-2 pr-0.5 scrollbar-thin">
+              {filteredSessions.map((sess) => {
+                const isSelected = currentDate === sess.date;
+                return (
+                  <button
+                    key={sess.date}
+                    type="button"
+                    onClick={() => {
+                      handleDateChange(sess.date);
+                      setIsSessionPickerOpen(false);
+                    }}
+                    className={`w-full text-left p-2.5 rounded-2xl border transition-all flex items-center justify-between ${
+                      isSelected
+                        ? isGayLordTab
+                          ? 'bg-pink-950/50 border-pink-500 shadow-md'
+                          : 'bg-emerald-950/50 border-emerald-500 shadow-md'
+                        : 'bg-slate-950 border-slate-800/80 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center shrink-0 font-mono ${
+                        sess.isWeekend
+                          ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                          : 'bg-slate-800 border border-slate-700 text-slate-300'
+                      }`}>
+                        <span className="text-[10px] font-black uppercase">{sess.dayOfWeekName}</span>
+                        <span className="text-xs font-black">{sess.date.split('-')[2]}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white truncate">{sess.formattedDate}</span>
+                          {sess.isWeekend && (
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              WE
+                            </span>
+                          )}
+                          {sess.isLatest && (
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Latest
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {sess.location ? `📍 ${sess.location}` : '🏸 Matchday Session'}
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <Check className={`w-4 h-4 shrink-0 ${isGayLordTab ? 'text-pink-400' : 'text-emerald-400'}`} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer switch to calendar */}
+            <div className="mt-3 pt-2.5 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSessionPickerOpen(false);
+                  setIsCalendarOpen(true);
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-slate-200 border border-slate-800 flex items-center justify-center gap-1.5"
+              >
+                <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Open Full Month Calendar</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Empty State when no matches were played on this day */}
       {!hasMatches && !isLoading ? (
