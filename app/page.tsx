@@ -21,9 +21,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<PlayerStats[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | undefined>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [matchDates, setMatchDates] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -34,17 +32,16 @@ export default function DashboardPage() {
   const initDashboard = async () => {
     try {
       setIsLoading(true);
-      const today = new Date().toISOString().split('T')[0];
       const [allSessions, squadMembers, leaderboardData, matchDatesList] = await Promise.all([
         dataService.getAllSessions(),
         dataService.getMembers(),
-        dataService.getLeaderboard(today),
+        dataService.getLeaderboard(undefined),
         dataService.getDatesWithMatches(),
       ]);
 
       setSessions(allSessions);
       setMembers(squadMembers);
-      setSelectedDate(today);
+      setSelectedDate(undefined);
       setStats(leaderboardData);
       setMatchDates(matchDatesList);
     } catch (err) {

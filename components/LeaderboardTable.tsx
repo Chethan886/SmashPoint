@@ -498,26 +498,8 @@ export default function LeaderboardTable({
 
       {/* 3. Controls: Daily vs All-Time Toggle + Calendar Date Picker + Search */}
       <div className={`relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-900/80 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-800 shadow-lg backdrop-blur-md ${isCalendarOpen ? 'z-40' : 'z-10'}`}>
-        {/* Toggle Pills - Full width on mobile */}
+        {/* Toggle Pills - Full width on mobile: All-Time first, then Daily */}
         <div className="grid grid-cols-2 bg-slate-950 p-1 rounded-xl sm:rounded-2xl border border-slate-800 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => {
-              const today = new Date().toISOString().split('T')[0];
-              handleDateChange(today);
-            }}
-            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition-all ${
-              currentDate
-                ? isGayLordTab 
-                  ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm'
-                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Daily</span>
-          </button>
-
           <button
             type="button"
             onClick={() => handleDateChange(undefined)}
@@ -531,6 +513,27 @@ export default function LeaderboardTable({
           >
             <Globe className="w-3.5 h-3.5" />
             <span>All-Time</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const today = new Date().toISOString().split('T')[0];
+              const defaultDailyDate = matchDates.includes(today)
+                ? today
+                : (matchDates.length > 0 ? matchDates[matchDates.length - 1] : today);
+              handleDateChange(defaultDailyDate);
+            }}
+            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition-all ${
+              currentDate
+                ? isGayLordTab 
+                  ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Daily</span>
           </button>
         </div>
 
