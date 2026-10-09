@@ -32,7 +32,8 @@ export default function ImageCropperModal({
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const CROP_BOX_SIZE = 260; // diameter of crop circle (px)
+  const CROP_BOX_SIZE = 240; // width & height of crop rounded rectangle (px)
+  const CROP_BOX_RADIUS = 32; // border radius matching profile cards (rounded-2xl)
 
   // Load image when imageSrc changes
   useEffect(() => {
@@ -269,29 +270,81 @@ export default function ImageCropperModal({
             </div>
           )}
 
-          {/* Vignette Overlay (Dark outside circle) */}
+          {/* Vignette Overlay (Dark outside rounded rectangle) */}
           <div className="absolute inset-0 pointer-events-none">
             <svg className="w-full h-full" viewBox="0 0 300 300">
               <defs>
-                <mask id="crop-circle-mask">
+                <mask id="crop-rounded-rect-mask">
                   {/* Fill entire canvas white */}
                   <rect width="300" height="300" fill="white" />
-                  {/* Cut out center circle */}
-                  <circle cx="150" cy="150" r={CROP_BOX_SIZE / 2} fill="black" />
+                  {/* Cut out center rounded rectangle */}
+                  <rect
+                    x={(300 - CROP_BOX_SIZE) / 2}
+                    y={(300 - CROP_BOX_SIZE) / 2}
+                    width={CROP_BOX_SIZE}
+                    height={CROP_BOX_SIZE}
+                    rx={CROP_BOX_RADIUS}
+                    ry={CROP_BOX_RADIUS}
+                    fill="black"
+                  />
                 </mask>
+                {/* Clip path for grid lines inside the rounded rectangle */}
+                <clipPath id="crop-inner-clip">
+                  <rect
+                    x={(300 - CROP_BOX_SIZE) / 2}
+                    y={(300 - CROP_BOX_SIZE) / 2}
+                    width={CROP_BOX_SIZE}
+                    height={CROP_BOX_SIZE}
+                    rx={CROP_BOX_RADIUS}
+                    ry={CROP_BOX_RADIUS}
+                  />
+                </clipPath>
               </defs>
+
               {/* Dark shading mask */}
-              <rect width="300" height="300" fill="rgba(0, 0, 0, 0.72)" mask="url(#crop-circle-mask)" />
-              {/* Circular guide border */}
-              <circle
-                cx="150"
-                cy="150"
-                r={CROP_BOX_SIZE / 2}
+              <rect width="300" height="300" fill="rgba(0, 0, 0, 0.75)" mask="url(#crop-rounded-rect-mask)" />
+
+              {/* 3x3 Rule-of-Thirds Grid Lines inside the crop area */}
+              <g clipPath="url(#crop-inner-clip)" stroke="rgba(255, 255, 255, 0.16)" strokeWidth="1" strokeDasharray="3 3">
+                <line
+                  x1={(300 - CROP_BOX_SIZE) / 2 + CROP_BOX_SIZE / 3}
+                  y1={(300 - CROP_BOX_SIZE) / 2}
+                  x2={(300 - CROP_BOX_SIZE) / 2 + CROP_BOX_SIZE / 3}
+                  y2={(300 + CROP_BOX_SIZE) / 2}
+                />
+                <line
+                  x1={(300 - CROP_BOX_SIZE) / 2 + (2 * CROP_BOX_SIZE) / 3}
+                  y1={(300 - CROP_BOX_SIZE) / 2}
+                  x2={(300 - CROP_BOX_SIZE) / 2 + (2 * CROP_BOX_SIZE) / 3}
+                  y2={(300 + CROP_BOX_SIZE) / 2}
+                />
+                <line
+                  x1={(300 - CROP_BOX_SIZE) / 2}
+                  y1={(300 - CROP_BOX_SIZE) / 2 + CROP_BOX_SIZE / 3}
+                  x2={(300 + CROP_BOX_SIZE) / 2}
+                  y2={(300 - CROP_BOX_SIZE) / 2 + CROP_BOX_SIZE / 3}
+                />
+                <line
+                  x1={(300 - CROP_BOX_SIZE) / 2}
+                  y1={(300 - CROP_BOX_SIZE) / 2 + (2 * CROP_BOX_SIZE) / 3}
+                  x2={(300 + CROP_BOX_SIZE) / 2}
+                  y2={(300 - CROP_BOX_SIZE) / 2 + (2 * CROP_BOX_SIZE) / 3}
+                />
+              </g>
+
+              {/* Rounded Rectangle guide border */}
+              <rect
+                x={(300 - CROP_BOX_SIZE) / 2}
+                y={(300 - CROP_BOX_SIZE) / 2}
+                width={CROP_BOX_SIZE}
+                height={CROP_BOX_SIZE}
+                rx={CROP_BOX_RADIUS}
+                ry={CROP_BOX_RADIUS}
                 fill="none"
                 stroke="#10b981"
-                strokeWidth="2"
-                strokeDasharray="4 4"
-                className="opacity-80"
+                strokeWidth="2.5"
+                strokeDasharray="6 4"
+                className="opacity-90"
               />
             </svg>
           </div>
