@@ -27,6 +27,30 @@ import Link from 'next/link';
 import ToastContainer, { ToastMessage } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
 
+const STORAGE_KEY_SELECTED_PLAYERS = 'smashpoint_selected_players';
+
+const getStoredSelectedPlayers = (): string[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SELECTED_PLAYERS);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (err) {
+    console.warn('Failed to parse selected players from storage', err);
+    return null;
+  }
+};
+
+const persistSelectedPlayers = (ids: string[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_SELECTED_PLAYERS, JSON.stringify(ids));
+  } catch (err) {
+    console.warn('Failed to persist selected players to storage', err);
+  }
+};
+
 export default function MatchesPage() {
   const [mounted, setMounted] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -52,6 +76,7 @@ export default function MatchesPage() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showSaveHistoryModal, setShowSaveHistoryModal] = useState<boolean>(false);
   const [showClearModal, setShowClearModal] = useState<boolean>(false);
+  const [showRegenerateConfirmModal, setShowRegenerateConfirmModal] = useState<boolean>(false);
 
   const showToast = (toast: Omit<ToastMessage, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -77,12 +102,12 @@ export default function MatchesPage() {
       setMembers(membersData);
       setSession(currentSession);
 
-      // Default select all members (up to 8 if many exist, or all)
-      setSelectedPlayerIds(membersData.slice(0, 8).map((m) => m.id));
+      const memberMap = new Map(membersData.map((m) => [m.id, m]));
+      const validMemberIdSet = new Set(membersData.map((m) => m.id));
+      let playerIdsInMatches: string[] = [];
 
       if (currentSession) {
         const rawMatches = await dataService.getMatchesBySession(currentSession.id);
-        const memberMap = new Map(membersData.map((m) => [m.id, m]));
         const populated: MatchWithPlayers[] = rawMatches.map((m) => ({
           ...m,
           team_a_player1: memberMap.get(m.team_a_player1_id),
@@ -92,6 +117,16 @@ export default function MatchesPage() {
         }));
         setMatches(populated);
 
+        // Record players who actually played in today's matches
+        const matchPlayerSet = new Set<string>();
+        rawMatches.forEach((m) => {
+          if (validMemberIdSet.has(m.team_a_player1_id)) matchPlayerSet.add(m.team_a_player1_id);
+          if (validMemberIdSet.has(m.team_a_player2_id)) matchPlayerSet.add(m.team_a_player2_id);
+          if (validMemberIdSet.has(m.team_b_player1_id)) matchPlayerSet.add(m.team_b_player1_id);
+          if (validMemberIdSet.has(m.team_b_player2_id)) matchPlayerSet.add(m.team_b_player2_id);
+        });
+        playerIdsInMatches = Array.from(matchPlayerSet);
+
         // If no matches yet, switch mobile tab to setup
         if (populated.length === 0) {
           setMobileTab('setup');
@@ -99,6 +134,24 @@ export default function MatchesPage() {
           setMobileTab('matches');
         }
       }
+
+      // Determine initial selected player IDs:
+      // 1. First priority: saved user selection in localStorage (filtered to valid current members)
+      const stored = getStoredSelectedPlayers();
+      let initialIds: string[] = [];
+
+      if (stored !== null) {
+        initialIds = stored.filter((id) => validMemberIdSet.has(id));
+      } else if (playerIdsInMatches.length >= 4) {
+        // 2. Second priority: players who played in today's existing matches
+        initialIds = playerIdsInMatches;
+      } else {
+        // 3. Third priority: default select all members (up to 8)
+        initialIds = membersData.slice(0, 8).map((m) => m.id);
+      }
+
+      setSelectedPlayerIds(initialIds);
+      persistSelectedPlayers(initialIds);
     } catch (err) {
       console.error('Failed to initialize matches page:', err);
     }
@@ -120,22 +173,25 @@ export default function MatchesPage() {
   };
 
   const handleTogglePlayer = (id: string) => {
-    if (selectedPlayerIds.includes(id)) {
-      setSelectedPlayerIds(selectedPlayerIds.filter((p) => p !== id));
-    } else {
-      setSelectedPlayerIds([...selectedPlayerIds, id]);
-    }
+    setSelectedPlayerIds((prev) => {
+      const updated = prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id];
+      persistSelectedPlayers(updated);
+      return updated;
+    });
   };
 
   const handleSelectAll = () => {
-    setSelectedPlayerIds(members.map((m) => m.id));
+    const allIds = members.map((m) => m.id);
+    setSelectedPlayerIds(allIds);
+    persistSelectedPlayers(allIds);
   };
 
   const handleDeselectAll = () => {
     setSelectedPlayerIds([]);
+    persistSelectedPlayers([]);
   };
 
-  const handleGenerateMatches = async () => {
+  const executeGenerateMatches = async () => {
     if (selectedPlayerIds.length < 4) {
       showToast({
         type: 'error',
@@ -202,7 +258,7 @@ export default function MatchesPage() {
       await dataService.createMatches(newMatches);
       await loadSessionMatches(currentSession.id, members);
 
-      setGenerationSummary(`Generated ${newMatches.length} optimal rounds!`);
+      setGenerationSummary(`Generated ${newMatches.length} optimal rounds for ${selectedPlayerIds.length} players!`);
       showToast({
         type: 'success',
         title: 'Matches Ready!',
@@ -222,6 +278,25 @@ export default function MatchesPage() {
     }
   };
 
+  const handleGenerateMatches = () => {
+    if (selectedPlayerIds.length < 4) {
+      showToast({
+        type: 'error',
+        title: 'Need 4 Players',
+        message: 'Please select at least 4 active players for doubles matches.',
+      });
+      return;
+    }
+
+    // Confirm with the user if matches already exist to avoid accidental replacement
+    if (matches.length > 0) {
+      setShowRegenerateConfirmModal(true);
+      return;
+    }
+
+    executeGenerateMatches();
+  };
+
   const handleGenerateExtraRounds = async (count: number) => {
     let currentSession = session;
     if (!currentSession || currentSession.location?.includes('[COMPLETED]') || currentSession.status === 'COMPLETED') {
@@ -230,34 +305,20 @@ export default function MatchesPage() {
     }
     if (!currentSession) return;
 
+    if (selectedPlayerIds.length < 4) {
+      showToast({
+        type: 'error',
+        title: 'Need 4 Players',
+        message: 'Please select at least 4 active players in Present Players to generate extra rounds.',
+      });
+      return;
+    }
+
     try {
       setGenerating(true);
 
-      // Collect active players: if selectedPlayerIds has at least 4, use them;
-      // otherwise use all players from current matches
-      let activeIds = selectedPlayerIds;
-      if (activeIds.length < 4) {
-        const playerIdsInMatches = new Set<string>();
-        matches.forEach((m) => {
-          playerIdsInMatches.add(m.team_a_player1_id);
-          playerIdsInMatches.add(m.team_a_player2_id);
-          playerIdsInMatches.add(m.team_b_player1_id);
-          playerIdsInMatches.add(m.team_b_player2_id);
-        });
-        activeIds = Array.from(playerIdsInMatches);
-      }
-
-      if (activeIds.length < 4) {
-        showToast({
-          type: 'error',
-          title: 'Need 4 Players',
-          message: 'Please select at least 4 active players to generate additional rounds.',
-        });
-        return;
-      }
-
       const payload = {
-        playerIds: activeIds,
+        playerIds: selectedPlayerIds,
         totalRounds: count,
         numberOfCourts: 1,
         existingMatches: matches, // Seeds penalty matrix so play counts are strictly balanced & repeat pairs are penalized
@@ -817,6 +878,52 @@ export default function MatchesPage() {
               The algorithm evaluates all {matches.length} played rounds to balance player court times, prevent repeat pairs, and ensure fresh opponent matchups starting at <span className="font-mono text-emerald-400 font-bold">Round {matches.length + 1}</span>.
             </p>
 
+            {/* Active Squad Selection for Extra Rounds */}
+            <div className="space-y-2 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Players for Extra Rounds ({selectedPlayerIds.length})</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {selectedPlayerIds.length >= 4 ? 'Ready' : 'Need min 4'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                {members.map((member) => {
+                  const isSelected = selectedPlayerIds.includes(member.id);
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => handleTogglePlayer(member.id)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-medium transition-all ${
+                        isSelected
+                          ? 'bg-emerald-950/80 border-emerald-500/70 text-emerald-200 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-500 hover:text-slate-300'
+                      }`}
+                      title={isSelected ? 'Included in rotation (tap to exclude)' : 'Excluded from rotation (tap to include)'}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: member.avatar_color || '#10b981' }}
+                      />
+                      <span className="truncate max-w-[90px]">{member.name}</span>
+                      {isSelected ? (
+                        <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedPlayerIds.length < 4 && (
+                <div className="text-[11px] text-rose-400 font-medium pt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Please select at least 4 active players for doubles.</span>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-300">
                 Number of Extra Rounds to Add:
@@ -883,8 +990,8 @@ export default function MatchesPage() {
               <button
                 type="button"
                 onClick={() => handleGenerateExtraRounds(extraRoundsCount)}
-                disabled={generating}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-black text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all"
+                disabled={generating || selectedPlayerIds.length < 4}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-black text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {generating ? 'Generating...' : `Add +${extraRoundsCount} Rounds`}
               </button>
@@ -896,6 +1003,23 @@ export default function MatchesPage() {
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* In-App Confirmation Modal: Re-generate Matches */}
+      <ConfirmModal
+        isOpen={showRegenerateConfirmModal}
+        onClose={() => setShowRegenerateConfirmModal(false)}
+        onConfirm={() => {
+          setShowRegenerateConfirmModal(false);
+          executeGenerateMatches();
+        }}
+        title="Re-generate & Replace Matches?"
+        description={`You already have ${matches.length} active match rounds on today's board. Re-generating will replace the existing matches and reset scores for the ${selectedPlayerIds.length} selected players. Are you sure you want to proceed?`}
+        confirmLabel="Replace & Re-generate"
+        cancelLabel="Keep Current Games"
+        variant="warning"
+        iconType="warning"
+        isLoading={generating}
+      />
 
       {/* In-App Confirmation Modal: Save to History */}
       <ConfirmModal
