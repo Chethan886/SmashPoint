@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Lock,
   Zap,
-  Crown,
   Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -559,7 +558,7 @@ function ScoreboardContent() {
             {odds && (
               <div className="flex items-center gap-2 mt-1 sm:mt-1.5 flex-wrap">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-pink-500/15 border border-pink-500/30 text-[11px] sm:text-xs font-black text-pink-300 shadow-sm">
-                  <Crown className="w-3.5 h-3.5 text-pink-400 fill-pink-400/20" />
+                  <span className="text-sm leading-none">💅</span>
                   <span>Gay Rate: {odds.teamAGayRate}%</span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-mono hidden xs:inline">
@@ -634,7 +633,7 @@ function ScoreboardContent() {
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2 sm:p-2.5 shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between text-[10px] sm:text-xs font-black mb-1.5 px-0.5">
                 <div className="flex items-center gap-1.5 text-pink-400">
-                  <Crown className="w-3.5 h-3.5 fill-pink-400/20" />
+                  <span className="text-sm leading-none">💅</span>
                   <span>Team A: {odds.teamAGayRate}% Gay</span>
                 </div>
 
@@ -644,13 +643,13 @@ function ScoreboardContent() {
                   className="px-2.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-pink-300 hover:text-white text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all border border-pink-500/30 active:scale-95"
                   title="View detailed gay rate analysis"
                 >
-                  <Crown className="w-3 h-3 text-pink-400" />
+                  <span className="text-xs leading-none">💅</span>
                   <span>{showOddsBreakdown ? 'Hide Gay Odds' : 'Gay Odds'}</span>
                 </button>
 
                 <div className="flex items-center gap-1.5 text-fuchsia-400">
                   <span>Team B: {odds.teamBGayRate}% Gay</span>
-                  <Crown className="w-3.5 h-3.5 fill-fuchsia-400/20" />
+                  <span className="text-sm leading-none">💅</span>
                 </div>
               </div>
 
@@ -766,7 +765,7 @@ function ScoreboardContent() {
             {odds && (
               <div className="flex items-center gap-2 mt-1 sm:mt-1.5 flex-wrap">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-pink-500/15 border border-pink-500/30 text-[11px] sm:text-xs font-black text-pink-300 shadow-sm">
-                  <Crown className="w-3.5 h-3.5 text-pink-400 fill-pink-400/20" />
+                  <span className="text-sm leading-none">💅</span>
                   <span>Gay Rate: {odds.teamBGayRate}%</span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-mono hidden xs:inline">

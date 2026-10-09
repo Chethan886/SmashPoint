@@ -20,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
-  Crown,
   X
 } from 'lucide-react';
 import Link from 'next/link';
@@ -312,7 +311,7 @@ export default function MatchCard({
                     className="inline-flex items-center gap-1 text-[10px] text-pink-300 font-extrabold bg-pink-500/15 px-1.5 py-0.5 rounded-md border border-pink-500/30 shadow-sm"
                     title={`Individual Gay Rates: ${odds.players.a1?.name || 'P1'} (${odds.players.a1?.gayRate}%), ${odds.players.a2?.name || 'P2'} (${odds.players.a2?.gayRate}%)`}
                   >
-                    <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20 flex-shrink-0" />
+                    <span className="text-[11px] leading-none">💅</span>
                     <span>Gay Rate: {odds.teamAGayRate}%</span>
                   </span>
                 )}
@@ -359,7 +358,7 @@ export default function MatchCard({
         {odds && (
           <div className="px-1 py-0.5 flex items-center justify-between gap-2 text-[9px]">
             <span className="font-extrabold uppercase text-pink-400/90 flex items-center gap-1 tracking-wider">
-              <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20" />
+              <span className="text-[11px] leading-none">💅</span>
               Gay Meter
             </span>
             <div className="flex-1 max-w-[120px] sm:max-w-[160px] h-1.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800/80">
@@ -417,7 +416,7 @@ export default function MatchCard({
                     className="inline-flex items-center gap-1 text-[10px] text-pink-300 font-extrabold bg-pink-500/15 px-1.5 py-0.5 rounded-md border border-pink-500/30 shadow-sm"
                     title={`Individual Gay Rates: ${odds.players.b1?.name || 'P3'} (${odds.players.b1?.gayRate}%), ${odds.players.b2?.name || 'P4'} (${odds.players.b2?.gayRate}%)`}
                   >
-                    <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20 flex-shrink-0" />
+                    <span className="text-[11px] leading-none">💅</span>
                     <span>Gay Rate: {odds.teamBGayRate}%</span>
                   </span>
                 )}
