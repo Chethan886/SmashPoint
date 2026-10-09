@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Member, MatchWithPlayers, Session, WinningTeam } from '@/lib/types';
+import { Member, Match, MatchWithPlayers, Session, WinningTeam } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import MatchCard from '@/components/MatchCard';
 import { getBadmintonMatchStatus } from '@/lib/matchmaking';
@@ -57,6 +57,7 @@ export default function MatchesPage() {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [matches, setMatches] = useState<MatchWithPlayers[]>([]);
+  const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [generating, setGenerating] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'matches' | 'setup'>('matches');
 
@@ -94,13 +95,15 @@ export default function MatchesPage() {
 
   const initPage = async () => {
     try {
-      const [membersData, currentSession] = await Promise.all([
+      const [membersData, currentSession, allMatchesData] = await Promise.all([
         dataService.getMembers(),
         dataService.getOrCreateTodaySession(),
+        dataService.getAllMatches(),
       ]);
 
       setMembers(membersData);
       setSession(currentSession);
+      setAllMatches(allMatchesData);
 
       const memberMap = new Map(membersData.map((m) => [m.id, m]));
       const validMemberIdSet = new Set(membersData.map((m) => m.id));
@@ -158,7 +161,10 @@ export default function MatchesPage() {
   };
 
   const loadSessionMatches = async (sessionId: string, currentMembers: Member[]) => {
-    const rawMatches = await dataService.getMatchesBySession(sessionId);
+    const [rawMatches, all] = await Promise.all([
+      dataService.getMatchesBySession(sessionId),
+      dataService.getAllMatches(),
+    ]);
     const memberMap = new Map(currentMembers.map((m) => [m.id, m]));
 
     const populated: MatchWithPlayers[] = rawMatches.map((m) => ({
@@ -170,6 +176,7 @@ export default function MatchesPage() {
     }));
 
     setMatches(populated);
+    setAllMatches(all);
   };
 
   const handleTogglePlayer = (id: string) => {
@@ -837,6 +844,8 @@ export default function MatchesPage() {
                     key={match.id}
                     match={match}
                     restingMembers={restingMembers}
+                    allMatches={allMatches}
+                    members={members}
                     onSaveScore={handleSaveScore}
                     onDeleteMatch={handleDeleteMatch}
                   />

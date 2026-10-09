@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { MatchWithPlayers, Member, WinningTeam } from '@/lib/types';
+import { Match, MatchWithPlayers, Member, WinningTeam } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import { getBadmintonMatchStatus, isNaturalBadmintonWin } from '@/lib/matchmaking';
+import { calculateMatchOdds, MatchOdds } from '@/lib/winProbability';
 import { 
   Trophy, 
   Plus, 
@@ -18,7 +19,10 @@ import {
   Coffee,
   TrendingUp,
   CheckCircle2,
-  Lock
+  Lock,
+  Zap,
+  Crown,
+  Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
@@ -30,6 +34,8 @@ function ScoreboardContent() {
 
   const [matches, setMatches] = useState<MatchWithPlayers[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [allHistoricalMatches, setAllHistoricalMatches] = useState<Match[]>([]);
+  const [showOddsBreakdown, setShowOddsBreakdown] = useState<boolean>(false);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -47,12 +53,14 @@ function ScoreboardContent() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [membersData, currentSession] = await Promise.all([
+      const [membersData, currentSession, allMatchesData] = await Promise.all([
         dataService.getMembers(),
         dataService.getOrCreateTodaySession(),
+        dataService.getAllMatches(),
       ]);
 
       setMembers(membersData);
+      setAllHistoricalMatches(allMatchesData);
 
       if (currentSession) {
         const rawMatches = await dataService.getMatchesBySession(currentSession.id);
@@ -82,6 +90,12 @@ function ScoreboardContent() {
   };
 
   const currentMatch = matches[currentIndex];
+
+  // Dynamically compute probability win rate and gay rate based on past matches
+  const odds: MatchOdds | null = useMemo(() => {
+    if (!currentMatch) return null;
+    return calculateMatchOdds(currentMatch, allHistoricalMatches, members);
+  }, [currentMatch, allHistoricalMatches, members]);
 
   // Touch swipe handlers
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -255,6 +269,17 @@ function ScoreboardContent() {
       )
     );
 
+    setAllHistoricalMatches((prev) => {
+      const idx = prev.findIndex((m) => m.id === currentMatch.id);
+      const updated = { ...currentMatch, score_team_a: nextA, score_team_b: nextB, winning_team: chosenWinner };
+      if (idx !== -1) {
+        const nextList = [...prev];
+        nextList[idx] = updated;
+        return nextList;
+      }
+      return [...prev, updated];
+    });
+
     await dataService.updateMatch(currentMatch.id, {
       score_team_a: nextA,
       score_team_b: nextB,
@@ -305,6 +330,17 @@ function ScoreboardContent() {
     setMatches((prev) =>
       prev.map((m, idx) => (idx === currentIndex ? { ...m, score_team_a: targetA, score_team_b: targetB, winning_team: winner } : m))
     );
+
+    setAllHistoricalMatches((prev) => {
+      const idx = prev.findIndex((m) => m.id === currentMatch.id);
+      const updated = { ...currentMatch, score_team_a: targetA, score_team_b: targetB, winning_team: winner };
+      if (idx !== -1) {
+        const nextList = [...prev];
+        nextList[idx] = updated;
+        return nextList;
+      }
+      return [...prev, updated];
+    });
 
     setNotification(`Round ${currentMatch.round_number} winner saved!`);
     setTimeout(() => setNotification(null), 1800);
@@ -484,37 +520,52 @@ function ScoreboardContent() {
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                Team A
-              </span>
-              <div className="flex items-center gap-1.5 font-bold text-xs sm:text-base text-white">
-                <span className="truncate">{currentMatch.team_a_player1?.name || 'P1'}</span>
-                <span className="text-slate-500">&amp;</span>
-                <span className="truncate">{currentMatch.team_a_player2?.name || 'P2'}</span>
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  Team A
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-xs sm:text-base text-white">
+                  <span className="truncate">{currentMatch.team_a_player1?.name || 'P1'}</span>
+                  <span className="text-slate-500">&amp;</span>
+                  <span className="truncate">{currentMatch.team_a_player2?.name || 'P2'}</span>
+                </div>
               </div>
+
+              {hasTeamAWon && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                  <Trophy className="w-3 h-3 fill-slate-950" /> Won
+                </span>
+              )}
+              {!hasTeamAWon && matchStatus.state === 'LEADING_A' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Leading (+{scoreA - scoreB})
+                </span>
+              )}
+              {!hasTeamAWon && matchStatus.state === 'MATCH_POINT_A' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                  Match Point
+                </span>
+              )}
+              {!hasTeamAWon && matchStatus.state === 'DEUCE' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Deuce
+                </span>
+              )}
             </div>
 
-            {hasTeamAWon && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 flex items-center gap-1 shadow-sm">
-                <Trophy className="w-3 h-3 fill-slate-950" /> Won
-              </span>
-            )}
-            {!hasTeamAWon && matchStatus.state === 'LEADING_A' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Leading (+{scoreA - scoreB})
-              </span>
-            )}
-            {!hasTeamAWon && matchStatus.state === 'MATCH_POINT_A' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
-                Match Point
-              </span>
-            )}
-            {!hasTeamAWon && matchStatus.state === 'DEUCE' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Deuce
-              </span>
+            {/* Gay Rate Only */}
+            {odds && (
+              <div className="flex items-center gap-2 mt-1 sm:mt-1.5 flex-wrap">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-pink-500/15 border border-pink-500/30 text-[11px] sm:text-xs font-black text-pink-300 shadow-sm">
+                  <Crown className="w-3.5 h-3.5 text-pink-400 fill-pink-400/20" />
+                  <span>Gay Rate: {odds.teamAGayRate}%</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono hidden xs:inline">
+                  Past: {odds.players.a1?.name} ({odds.players.a1?.gayRate}%) • {odds.players.a2?.name} ({odds.players.a2?.gayRate}%)
+                </span>
+              </div>
             )}
           </div>
 
@@ -577,13 +628,94 @@ function ScoreboardContent() {
           </div>
         </div>
 
-        {/* Court Net Graphic Divider */}
-        <div className="flex items-center justify-center py-0.5">
-          <div className="h-[1px] bg-slate-800 flex-1" />
-          <span className="px-3 text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
-            🏸 COURT NET
-          </span>
-          <div className="h-[1px] bg-slate-800 flex-1" />
+        {/* Court Net & Matchup Gay Rate Tug-of-War Bar */}
+        <div className="py-0.5 space-y-1">
+          {odds && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2 sm:p-2.5 shadow-lg backdrop-blur-md">
+              <div className="flex items-center justify-between text-[10px] sm:text-xs font-black mb-1.5 px-0.5">
+                <div className="flex items-center gap-1.5 text-pink-400">
+                  <Crown className="w-3.5 h-3.5 fill-pink-400/20" />
+                  <span>Team A: {odds.teamAGayRate}% Gay</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowOddsBreakdown((prev) => !prev)}
+                  className="px-2.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-pink-300 hover:text-white text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all border border-pink-500/30 active:scale-95"
+                  title="View detailed gay rate analysis"
+                >
+                  <Crown className="w-3 h-3 text-pink-400" />
+                  <span>{showOddsBreakdown ? 'Hide Gay Odds' : 'Gay Odds'}</span>
+                </button>
+
+                <div className="flex items-center gap-1.5 text-fuchsia-400">
+                  <span>Team B: {odds.teamBGayRate}% Gay</span>
+                  <Crown className="w-3.5 h-3.5 fill-fuchsia-400/20" />
+                </div>
+              </div>
+
+              {/* Dynamic Tug-of-War Gay Rate Bar */}
+              <div className="relative w-full h-2 rounded-full bg-slate-950 overflow-hidden flex ring-1 ring-slate-800">
+                <div
+                  className="h-full bg-gradient-to-r from-pink-600 via-rose-500 to-pink-500 transition-all duration-700 shadow-sm"
+                  style={{ width: `${odds.teamAGayRate}%` }}
+                />
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-600 transition-all duration-700 shadow-sm"
+                  style={{ width: `${odds.teamBGayRate}%` }}
+                />
+              </div>
+
+              {/* Expandable Odds Breakdown Panel */}
+              {showOddsBreakdown && (
+                <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300 space-y-1.5 animate-fade-in">
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="bg-slate-950/70 p-2 rounded-xl border border-slate-800">
+                      <div className="font-bold text-pink-400 mb-0.5">Team A Past Form</div>
+                      <div className="text-[10px] text-pink-300">
+                        Avg Gay Rate: <span className="font-bold">{odds.historicalTeamAGayRate}%</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Losses: {((odds.players.a1?.losses || 0) + (odds.players.a2?.losses || 0))} in {((odds.players.a1?.totalMatches || 0) + (odds.players.a2?.totalMatches || 0))} games
+                      </div>
+                      {odds.synergy.duoAPlayed > 0 && (
+                        <div className="text-[10px] text-pink-400/80 mt-1">
+                          Duo Losses: {odds.synergy.duoAPlayed - odds.synergy.duoAWins} / {odds.synergy.duoAPlayed}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-slate-950/70 p-2 rounded-xl border border-slate-800">
+                      <div className="font-bold text-fuchsia-400 mb-0.5">Team B Past Form</div>
+                      <div className="text-[10px] text-pink-300">
+                        Avg Gay Rate: <span className="font-bold">{odds.historicalTeamBGayRate}%</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Losses: {((odds.players.b1?.losses || 0) + (odds.players.b2?.losses || 0))} in {((odds.players.b1?.totalMatches || 0) + (odds.players.b2?.totalMatches || 0))} games
+                      </div>
+                      {odds.synergy.duoBPlayed > 0 && (
+                        <div className="text-[10px] text-pink-400/80 mt-1">
+                          Duo Losses: {odds.synergy.duoBPlayed - odds.synergy.duoBWins} / {odds.synergy.duoBPlayed}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-center text-[10px] text-slate-400 font-mono">
+                    Based on {odds.totalMatchesEvaluated} past match records
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-center py-0.5">
+            <div className="h-[1px] bg-slate-800 flex-1" />
+            <span className="px-3 text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
+              🏸 COURT NET
+            </span>
+            <div className="h-[1px] bg-slate-800 flex-1" />
+          </div>
         </div>
 
         {/* TEAM B SECTION */}
@@ -595,37 +727,52 @@ function ScoreboardContent() {
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-teal-500/20 text-teal-400 border border-teal-500/30">
-                Team B
-              </span>
-              <div className="flex items-center gap-1.5 font-bold text-xs sm:text-base text-white">
-                <span className="truncate">{currentMatch.team_b_player1?.name || 'P3'}</span>
-                <span className="text-slate-500">&amp;</span>
-                <span className="truncate">{currentMatch.team_b_player2?.name || 'P4'}</span>
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold uppercase bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                  Team B
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-xs sm:text-base text-white">
+                  <span className="truncate">{currentMatch.team_b_player1?.name || 'P3'}</span>
+                  <span className="text-slate-500">&amp;</span>
+                  <span className="truncate">{currentMatch.team_b_player2?.name || 'P4'}</span>
+                </div>
               </div>
+
+              {hasTeamBWon && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-400 text-slate-950 flex items-center gap-1 shadow-sm">
+                  <Trophy className="w-3 h-3 fill-slate-950" /> Won
+                </span>
+              )}
+              {!hasTeamBWon && matchStatus.state === 'LEADING_B' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                  Leading (+{scoreB - scoreA})
+                </span>
+              )}
+              {!hasTeamBWon && matchStatus.state === 'MATCH_POINT_B' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                  Match Point
+                </span>
+              )}
+              {!hasTeamBWon && matchStatus.state === 'DEUCE' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Deuce
+                </span>
+              )}
             </div>
 
-            {hasTeamBWon && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-400 text-slate-950 flex items-center gap-1 shadow-sm">
-                <Trophy className="w-3 h-3 fill-slate-950" /> Won
-              </span>
-            )}
-            {!hasTeamBWon && matchStatus.state === 'LEADING_B' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                Leading (+{scoreB - scoreA})
-              </span>
-            )}
-            {!hasTeamBWon && matchStatus.state === 'MATCH_POINT_B' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
-                Match Point
-              </span>
-            )}
-            {!hasTeamBWon && matchStatus.state === 'DEUCE' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Deuce
-              </span>
+            {/* Gay Rate Only */}
+            {odds && (
+              <div className="flex items-center gap-2 mt-1 sm:mt-1.5 flex-wrap">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-pink-500/15 border border-pink-500/30 text-[11px] sm:text-xs font-black text-pink-300 shadow-sm">
+                  <Crown className="w-3.5 h-3.5 text-pink-400 fill-pink-400/20" />
+                  <span>Gay Rate: {odds.teamBGayRate}%</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono hidden xs:inline">
+                  Past: {odds.players.b1?.name} ({odds.players.b1?.gayRate}%) • {odds.players.b2?.name} ({odds.players.b2?.gayRate}%)
+                </span>
+              </div>
             )}
           </div>
 

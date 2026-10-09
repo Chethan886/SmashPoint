@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { MatchWithPlayers, Member, WinningTeam } from '@/lib/types';
+import React, { useState, useMemo } from 'react';
+import { Match, MatchWithPlayers, Member, WinningTeam } from '@/lib/types';
 import { getBadmintonMatchStatus, isNaturalBadmintonWin } from '@/lib/matchmaking';
+import { calculateMatchOdds, MatchOdds } from '@/lib/winProbability';
 import { 
   Trophy, 
   Trash2, 
@@ -19,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
+  Crown,
   X
 } from 'lucide-react';
 import Link from 'next/link';
@@ -26,6 +28,8 @@ import Link from 'next/link';
 interface MatchCardProps {
   match: MatchWithPlayers;
   restingMembers?: Member[];
+  allMatches?: Match[];
+  members?: Member[];
   onSaveScore: (matchId: string, scoreA: number, scoreB: number, winningTeam: WinningTeam) => Promise<void>;
   onDeleteMatch?: (matchId: string) => Promise<void>;
 }
@@ -33,6 +37,8 @@ interface MatchCardProps {
 export default function MatchCard({
   match,
   restingMembers = [],
+  allMatches,
+  members,
   onSaveScore,
   onDeleteMatch,
 }: MatchCardProps) {
@@ -41,6 +47,12 @@ export default function MatchCard({
   const [showMarkWinner, setShowMarkWinner] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isReopened, setIsReopened] = useState(false);
+
+  // Dynamic Gay Rate odds calculation based on past matches
+  const odds: MatchOdds | null = useMemo(() => {
+    if (!allMatches || !members) return null;
+    return calculateMatchOdds(match, allMatches, members);
+  }, [match, allMatches, members]);
 
   // Real-time badminton match status
   const status = getBadmintonMatchStatus(match.score_team_a, match.score_team_b, match.winning_team);
@@ -293,7 +305,18 @@ export default function MatchCard({
                   <Trophy className="w-3.5 h-3.5 text-amber-400 inline-block flex-shrink-0 fill-amber-400/20" />
                 )}
               </div>
-              <span className="text-[10px] text-emerald-400/80 font-medium">Team A</span>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-emerald-400/80 font-medium">Team A</span>
+                {odds && (
+                  <span 
+                    className="inline-flex items-center gap-1 text-[10px] text-pink-300 font-extrabold bg-pink-500/15 px-1.5 py-0.5 rounded-md border border-pink-500/30 shadow-sm"
+                    title={`Individual Gay Rates: ${odds.players.a1?.name || 'P1'} (${odds.players.a1?.gayRate}%), ${odds.players.a2?.name || 'P2'} (${odds.players.a2?.gayRate}%)`}
+                  >
+                    <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20 flex-shrink-0" />
+                    <span>Gay Rate: {odds.teamAGayRate}%</span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -332,6 +355,31 @@ export default function MatchCard({
           </div>
         </div>
 
+        {/* Gay Meter Bar */}
+        {odds && (
+          <div className="px-1 py-0.5 flex items-center justify-between gap-2 text-[9px]">
+            <span className="font-extrabold uppercase text-pink-400/90 flex items-center gap-1 tracking-wider">
+              <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20" />
+              Gay Meter
+            </span>
+            <div className="flex-1 max-w-[120px] sm:max-w-[160px] h-1.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800/80">
+              <div
+                className="h-full bg-gradient-to-r from-pink-600 to-rose-400 transition-all duration-500"
+                style={{ width: `${odds.teamAGayRate}%` }}
+                title={`Team A: ${odds.teamAGayRate}%`}
+              />
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                style={{ width: `${odds.teamBGayRate}%` }}
+                title={`Team B: ${odds.teamBGayRate}%`}
+              />
+            </div>
+            <span className="font-mono text-slate-400 font-bold">
+              {odds.teamAGayRate}% vs {odds.teamBGayRate}%
+            </span>
+          </div>
+        )}
+
         {/* Team B Row */}
         <div
           className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border transition-all ${
@@ -362,7 +410,18 @@ export default function MatchCard({
                   <Trophy className="w-3.5 h-3.5 text-amber-400 inline-block flex-shrink-0 fill-amber-400/20" />
                 )}
               </div>
-              <span className="text-[10px] text-teal-400/80 font-medium">Team B</span>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-[10px] text-teal-400/80 font-medium">Team B</span>
+                {odds && (
+                  <span 
+                    className="inline-flex items-center gap-1 text-[10px] text-pink-300 font-extrabold bg-pink-500/15 px-1.5 py-0.5 rounded-md border border-pink-500/30 shadow-sm"
+                    title={`Individual Gay Rates: ${odds.players.b1?.name || 'P3'} (${odds.players.b1?.gayRate}%), ${odds.players.b2?.name || 'P4'} (${odds.players.b2?.gayRate}%)`}
+                  >
+                    <Crown className="w-2.5 h-2.5 text-pink-400 fill-pink-400/20 flex-shrink-0" />
+                    <span>Gay Rate: {odds.teamBGayRate}%</span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
