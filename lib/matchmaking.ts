@@ -388,3 +388,85 @@ export function getBadmintonMatchStatus(
     hasWon: false,
   };
 }
+
+export interface BalanceAnalysis {
+  totalRounds: number;
+  totalSlots: number;
+  isEqual: boolean;
+  baseMatches: number;
+  extraPlayersCount: number;
+  moreMatches: number;
+  moreRests: number;
+  fewerPlayersCount: number;
+  fewerMatches: number;
+  fewerRests: number;
+  nextEqualRounds: number;
+  roundsToNextEqual: number;
+  nextEqualMatchesPerPlayer: number;
+  equalPresets: { rounds: number; matchesPerPlayer: number }[];
+}
+
+/**
+ * Calculates whether a given player count and round count produces mathematically equal matches,
+ * or how many matches/rests each player will receive if imbalanced.
+ */
+export function analyzeRotationBalance(playerCount: number, rounds: number): BalanceAnalysis | null {
+  if (playerCount < 4 || rounds <= 0) return null;
+  const P = playerCount;
+  const totalSlots = rounds * 4;
+  const baseMatches = Math.floor(totalSlots / P);
+  const remainder = totalSlots % P;
+  const isEqual = remainder === 0;
+
+  const extraPlayersCount = remainder;
+  const moreMatches = baseMatches + 1;
+  const moreRests = Math.max(0, rounds - moreMatches);
+
+  const fewerPlayersCount = P - remainder;
+  const fewerMatches = baseMatches;
+  const fewerRests = Math.max(0, rounds - fewerMatches);
+
+  // Find next equal round count
+  let nextEqualRounds = rounds;
+  if (!isEqual) {
+    while ((nextEqualRounds * 4) % P !== 0) {
+      nextEqualRounds++;
+    }
+  }
+  const roundsToNextEqual = Math.max(0, nextEqualRounds - rounds);
+  const nextEqualMatchesPerPlayer = (nextEqualRounds * 4) / P;
+
+  // Cycle rounds for P players: smallest R >= 1 where (R * 4) % P == 0
+  let cycleRounds = 1;
+  while ((cycleRounds * 4) % P !== 0) {
+    cycleRounds++;
+  }
+
+  const equalPresets: { rounds: number; matchesPerPlayer: number }[] = [];
+  for (let k = 1; k <= 4; k++) {
+    const r = cycleRounds * k;
+    if (r <= 28) {
+      equalPresets.push({
+        rounds: r,
+        matchesPerPlayer: (r * 4) / P,
+      });
+    }
+  }
+
+  return {
+    totalRounds: rounds,
+    totalSlots,
+    isEqual,
+    baseMatches,
+    extraPlayersCount,
+    moreMatches,
+    moreRests,
+    fewerPlayersCount,
+    fewerMatches,
+    fewerRests,
+    nextEqualRounds,
+    roundsToNextEqual,
+    nextEqualMatchesPerPlayer,
+    equalPresets,
+  };
+}

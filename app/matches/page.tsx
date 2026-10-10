@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Member, Match, MatchWithPlayers, Session, WinningTeam } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import MatchCard from '@/components/MatchCard';
-import { getBadmintonMatchStatus } from '@/lib/matchmaking';
+import { getBadmintonMatchStatus, analyzeRotationBalance, BalanceAnalysis } from '@/lib/matchmaking';
 import { 
   Swords, 
   Users, 
@@ -21,7 +21,9 @@ import {
   Archive, 
   History as HistoryIcon, 
   X, 
-  Trophy 
+  Trophy,
+  Scale,
+  ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
 import ToastContainer, { ToastMessage } from '@/components/Toast';
@@ -499,10 +501,20 @@ export default function MatchesPage() {
   const P = selectedPlayerIds.length;
   const estimatedMatches =
     generationMode === 'target'
-      ? Math.round((P * targetMatches) / 4)
+      ? Math.max(1, Math.round((P * targetMatches) / 4))
       : totalRoundsInput;
   const restingCount = Math.max(0, P - 4);
   const allMatchesCompleted = matches.length > 0 && matches.every((m) => m.winning_team !== 'PENDING');
+
+  const rotationBalance: BalanceAnalysis | null = useMemo(
+    () => analyzeRotationBalance(P, estimatedMatches),
+    [P, estimatedMatches]
+  );
+
+  const extraRoundsBalance: BalanceAnalysis | null = useMemo(
+    () => analyzeRotationBalance(selectedPlayerIds.length, matches.length + extraRoundsCount),
+    [selectedPlayerIds.length, matches.length, extraRoundsCount]
+  );
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in">
@@ -639,7 +651,7 @@ export default function MatchesPage() {
           </div>
 
           {/* Rotation & Generator Settings Card */}
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-3.5">
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-emerald-400" />
@@ -650,41 +662,225 @@ export default function MatchesPage() {
               </span>
             </div>
 
-            {/* Target Matches Stepper */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Matches per Player
-                </label>
-                <span className="text-xs font-bold text-emerald-400 font-mono">
-                  ~{estimatedMatches} total rounds
-                </span>
-              </div>
-
-              {/* Stepper with big tap targets */}
-              <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setTargetMatches(Math.max(1, targetMatches - 1))}
-                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <div className="flex flex-col items-center">
-                  <span className="text-base font-black text-white font-mono">
-                    {targetMatches}
-                  </span>
-                  <span className="text-[10px] text-slate-400">matches / player</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTargetMatches(Math.min(8, targetMatches + 1))}
-                  className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center active:scale-95 transition-transform shadow-md shadow-emerald-600/30"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
+            {/* Mode Selector: By Matches/Player vs By Total Rounds */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setGenerationMode('target')}
+                className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                  generationMode === 'target'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Matches / Player
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenerationMode('rounds')}
+                className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+                  generationMode === 'rounds'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Total Rounds
+              </button>
             </div>
+
+            {/* Target Matches or Total Rounds Stepper */}
+            {generationMode === 'target' ? (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Matches per Player
+                  </label>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">
+                    ~{estimatedMatches} total rounds
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setTargetMatches(Math.max(1, targetMatches - 1))}
+                    className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <div className="flex flex-col items-center">
+                    <span className="text-base font-black text-white font-mono">
+                      {targetMatches}
+                    </span>
+                    <span className="text-[10px] text-slate-400">target matches</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTargetMatches(Math.min(10, targetMatches + 1))}
+                    className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center active:scale-95 transition-transform shadow-md shadow-emerald-600/30"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Total Rounds to Play
+                  </label>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">
+                    {totalRoundsInput} rounds
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setTotalRoundsInput(Math.max(1, totalRoundsInput - 1))}
+                    className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <div className="flex flex-col items-center">
+                    <span className="text-base font-black text-white font-mono">
+                      {totalRoundsInput}
+                    </span>
+                    <span className="text-[10px] text-slate-400">rounds</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTotalRoundsInput(Math.min(28, totalRoundsInput + 1))}
+                    className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center active:scale-95 transition-transform shadow-md shadow-emerald-600/30"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Equal Round Presets for Quick Selection */}
+            {P >= 4 && rotationBalance && rotationBalance.equalPresets.length > 0 && (
+              <div className="space-y-1.5 pt-0.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-semibold flex items-center gap-1">
+                    <span>🎯 Equal Round Presets:</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-mono">Zero variance</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {rotationBalance.equalPresets.map((preset) => {
+                    const isCurrent = estimatedMatches === preset.rounds;
+                    return (
+                      <button
+                        key={preset.rounds}
+                        type="button"
+                        onClick={() => {
+                          setGenerationMode('rounds');
+                          setTotalRoundsInput(preset.rounds);
+                        }}
+                        className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1 active:scale-95 ${
+                          isCurrent
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 ring-1 ring-emerald-400/40 shadow-sm'
+                            : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        <span>{preset.rounds} Rounds</span>
+                        <span className="text-[10px] opacity-75 font-normal">({preset.matchesPerPlayer} each)</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Smart Balance Advisor Card */}
+            {P >= 4 && rotationBalance && (
+              <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-white">
+                    <Scale className="w-4 h-4 text-amber-400" />
+                    <span>Smart Balance Advisor</span>
+                  </div>
+                  {rotationBalance.isEqual ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm">
+                      <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                      100% Equal Parity
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      <AlertCircle className="w-2.5 h-2.5 text-amber-400" />
+                      Imbalanced (±1 Match)
+                    </span>
+                  )}
+                </div>
+
+                {rotationBalance.isEqual ? (
+                  <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-3 text-xs space-y-1">
+                    <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span>All {P} players play exactly {rotationBalance.baseMatches} matches!</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Every player receives an identical workload: exactly {rotationBalance.baseMatches} matches played and {rotationBalance.moreRests} rests across {rotationBalance.totalRounds} rounds.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3 text-xs space-y-2.5">
+                    <div>
+                      <div className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider mb-1.5">
+                        Match Count Preview ({rotationBalance.totalRounds} Rounds):
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+                          <div className="font-black text-amber-300 text-sm">
+                            {rotationBalance.extraPlayersCount} {rotationBalance.extraPlayersCount === 1 ? 'Player gets' : 'Players get'}
+                          </div>
+                          <div className="text-xs text-white font-extrabold">
+                            {rotationBalance.moreMatches} Matches
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {rotationBalance.moreRests} {rotationBalance.moreRests === 1 ? 'rest' : 'rests'}
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+                          <div className="font-black text-rose-300 text-sm">
+                            {rotationBalance.fewerPlayersCount} {rotationBalance.fewerPlayersCount === 1 ? 'Player gets' : 'Players get'}
+                          </div>
+                          <div className="text-xs text-white font-extrabold">
+                            {rotationBalance.fewerMatches} Matches
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {rotationBalance.fewerRests} {rotationBalance.fewerRests === 1 ? 'rest' : 'rests'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="text-[11px] text-slate-300 leading-snug">
+                        <span className="font-bold text-amber-200">💡 Equal Parity:</span> Play{' '}
+                        <span className="font-bold text-emerald-400">{rotationBalance.nextEqualRounds} rounds</span>{' '}
+                        (+{rotationBalance.roundsToNextEqual}) so all {P} players get exactly{' '}
+                        <span className="font-bold text-emerald-400">{rotationBalance.nextEqualMatchesPerPlayer} matches</span>!
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGenerationMode('rounds');
+                          setTotalRoundsInput(rotationBalance.nextEqualRounds);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] flex items-center justify-center gap-1 active:scale-95 transition-transform shrink-0 shadow-sm shadow-emerald-600/30"
+                      >
+                        <span>Snap to {rotationBalance.nextEqualRounds} Equal</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {generationSummary && (
               <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-medium flex items-center gap-2">
@@ -968,25 +1164,87 @@ export default function MatchesPage() {
                 </button>
               </div>
 
-              {/* Presets */}
-              <div className="flex items-center gap-1.5 pt-1">
+              {/* Presets with Equal Parity Badges */}
+              <div className="flex items-center gap-1.5 pt-1 flex-wrap">
                 <span className="text-[10px] text-slate-500 font-bold">Presets:</span>
-                {[1, 2, 3, 4].map((cnt) => (
-                  <button
-                    key={cnt}
-                    type="button"
-                    onClick={() => setExtraRoundsCount(cnt)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
-                      extraRoundsCount === cnt
-                        ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                        : 'bg-slate-800 text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    +{cnt}
-                  </button>
-                ))}
+                {[1, 2, 3, 4].map((cnt) => {
+                  const total = matches.length + cnt;
+                  const isPresetEqual = selectedPlayerIds.length >= 4 && (total * 4) % selectedPlayerIds.length === 0;
+                  return (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setExtraRoundsCount(cnt)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1 ${
+                        extraRoundsCount === cnt
+                          ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-1 ring-emerald-400'
+                          : isPresetEqual
+                          ? 'bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/50'
+                          : 'bg-slate-800 text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      <span>+{cnt}</span>
+                      {isPresetEqual && <span className="text-[10px]">🎯</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Smart Balance Advisor Preview in Modal */}
+            {selectedPlayerIds.length >= 4 && extraRoundsBalance && (
+              <div className="space-y-1.5 pt-1 border-t border-slate-800">
+                {extraRoundsBalance.isEqual ? (
+                  <div className="bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded-2xl text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-300">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <span>🎯 100% Equal Parity ({matches.length + extraRoundsCount} Total Rounds)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300">
+                      Adding +{extraRoundsCount} rounds brings all {selectedPlayerIds.length} players to exactly {extraRoundsBalance.baseMatches} matches played!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-amber-950/30 border border-amber-500/30 p-2.5 rounded-2xl text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-300 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                        <Scale className="w-3 h-3 text-amber-400" />
+                        Projected Total ({matches.length + extraRoundsCount} Rounds):
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30">
+                        Imbalanced (±1 Game)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
+                      <div className="bg-slate-950/80 p-1.5 rounded-xl border border-slate-800">
+                        <div className="font-bold text-amber-300">{extraRoundsBalance.extraPlayersCount} {extraRoundsBalance.extraPlayersCount === 1 ? 'player' : 'players'}</div>
+                        <div className="text-[10px] text-white font-semibold">{extraRoundsBalance.moreMatches} games</div>
+                      </div>
+                      <div className="bg-slate-950/80 p-1.5 rounded-xl border border-slate-800">
+                        <div className="font-bold text-rose-300">{extraRoundsBalance.fewerPlayersCount} {extraRoundsBalance.fewerPlayersCount === 1 ? 'player' : 'players'}</div>
+                        <div className="text-[10px] text-white font-semibold">{extraRoundsBalance.fewerMatches} games</div>
+                      </div>
+                    </div>
+
+                    {extraRoundsBalance.roundsToNextEqual > 0 && (
+                      <div className="pt-1.5 border-t border-amber-500/20 flex items-center justify-between gap-1 text-[10px]">
+                        <span className="text-slate-300">
+                          Add <span className="font-bold text-emerald-400">+{extraRoundsCount + extraRoundsBalance.roundsToNextEqual} rounds</span> for parity ({extraRoundsBalance.nextEqualMatchesPerPlayer} each)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExtraRoundsCount(extraRoundsCount + extraRoundsBalance.roundsToNextEqual)}
+                          className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold shrink-0 active:scale-95 transition-transform"
+                        >
+                          +{extraRoundsCount + extraRoundsBalance.roundsToNextEqual} Parity 🎯
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-2 pt-2">
               <button
