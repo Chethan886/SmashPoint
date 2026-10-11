@@ -7,24 +7,37 @@ import { dataService } from '@/lib/dataService';
 import { getBadmintonMatchStatus, isNaturalBadmintonWin } from '@/lib/matchmaking';
 import { calculateMatchOdds, MatchOdds } from '@/lib/winProbability';
 import { 
+  calculateServiceAndCourts, 
+  MatchServiceState, 
+  createInitialServiceState, 
+  applyPointScored, 
+  applyPointUndone 
+} from '@/lib/serviceTracker';
+import { 
   Trophy, 
   Plus, 
   Minus, 
   RotateCcw, 
   Check, 
   Flame, 
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Coffee,
-  TrendingUp,
-  CheckCircle2,
-  Lock,
-  Zap,
-  Sparkles
+  ArrowLeft, 
+  ChevronLeft, 
+  ChevronRight, 
+  Coffee, 
+  TrendingUp, 
+  CheckCircle2, 
+  Lock, 
+  Unlock,
+  Zap, 
+  Sparkles,
+  ArrowRightLeft,
+  Settings2,
+  X,
+  ArrowRight
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
+import ServiceSetupModal from '@/components/ServiceSetupModal';
 
 function ScoreboardContent() {
   const router = useRouter();
@@ -40,6 +53,129 @@ function ScoreboardContent() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [reopenedMatchIds, setReopenedMatchIds] = useState<Set<string>>(new Set());
+  const [serviceStateMap, setServiceStateMap] = useState<Record<string, MatchServiceState>>({});
+  const [showServiceSetupModal, setShowServiceSetupModal] = useState<boolean>(false);
+  const [setupServingTeam, setSetupServingTeam] = useState<'A' | 'B'>('A');
+  const [setupTeamARightId, setSetupTeamARightId] = useState<string>('');
+  const [setupTeamBRightId, setSetupTeamBRightId] = useState<string>('');
+
+  const getServiceState = (match: MatchWithPlayers): MatchServiceState => {
+    if (serviceStateMap[match.id]) {
+      return serviceStateMap[match.id];
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(`smashpoint_service_${match.id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.teamARightPlayerId && parsed.teamBRightPlayerId) {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    const pA1 = match.team_a_player1_id || '';
+    const pA2 = match.team_a_player2_id || '';
+    const pB1 = match.team_b_player1_id || '';
+    const pB2 = match.team_b_player2_id || '';
+    return {
+      teamARightPlayerId: pA1,
+      teamALeftPlayerId: pA2,
+      teamBRightPlayerId: pB1,
+      teamBLeftPlayerId: pB2,
+      servingTeam: 'A',
+      serverPlayerId: pA1,
+      receiverPlayerId: pB1,
+      isConfigured: false,
+      isLocked: false,
+      history: [],
+    };
+  };
+
+  const updateServiceState = (matchId: string, newState: MatchServiceState) => {
+    setServiceStateMap((prev) => ({
+      ...prev,
+      [matchId]: newState,
+    }));
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`smashpoint_service_${matchId}`, JSON.stringify(newState));
+      } catch {}
+    }
+  };
+
+  const handleOpenServiceSetup = () => {
+    if (!currentMatch) return;
+    const cur = getServiceState(currentMatch);
+    setSetupServingTeam(cur.servingTeam);
+    setSetupTeamARightId(cur.teamARightPlayerId || currentMatch.team_a_player1_id || '');
+    setSetupTeamBRightId(cur.teamBRightPlayerId || currentMatch.team_b_player1_id || '');
+    setShowServiceSetupModal(true);
+  };
+
+  const handleSaveServiceSetup = (newState: MatchServiceState) => {
+    if (!currentMatch) return;
+    updateServiceState(currentMatch.id, newState);
+    setShowServiceSetupModal(false);
+  };
+
+  const handleToggleServiceLock = () => {
+    if (!currentMatch) return;
+    const cur = getServiceState(currentMatch);
+    updateServiceState(currentMatch.id, {
+      ...cur,
+      isLocked: !cur.isLocked,
+    });
+  };
+
+  const handleToggleServingTeam = () => {
+    if (!currentMatch) return;
+    const curService = getServiceState(currentMatch);
+    if (curService.isLocked) return;
+    const nextServingTeam: 'A' | 'B' = curService.servingTeam === 'A' ? 'B' : 'A';
+    updateServiceState(currentMatch.id, {
+      ...curService,
+      servingTeam: nextServingTeam,
+    });
+  };
+
+  const handleSwapTeamCourt = (team: 'A' | 'B') => {
+    if (!currentMatch) return;
+    const cur = getServiceState(currentMatch);
+    if (cur.isLocked) return;
+    if (team === 'A') {
+      const nextALeft = cur.teamARightPlayerId;
+      const nextARight = cur.teamALeftPlayerId;
+      updateServiceState(currentMatch.id, {
+        ...cur,
+        teamALeftPlayerId: nextALeft,
+        teamARightPlayerId: nextARight,
+      });
+    } else {
+      const nextBLeft = cur.teamBRightPlayerId;
+      const nextBRight = cur.teamBLeftPlayerId;
+      updateServiceState(currentMatch.id, {
+        ...cur,
+        teamBLeftPlayerId: nextBLeft,
+        teamBRightPlayerId: nextBRight,
+      });
+    }
+  };
+
+  const getPlayerServiceInfo = (
+    player: { id: string; name: string } | null | undefined,
+    team: 'A' | 'B'
+  ) => {
+    if (!player || !serviceInfo) return null;
+    const isRight = team === 'A'
+      ? serviceInfo.teamA.right.player?.id === player.id
+      : serviceInfo.teamB.right.player?.id === player.id;
+    const courtLabel = isRight ? 'Right Court' : 'Left Court';
+    const courtOddEven = isRight ? 'Even' : 'Odd';
+    const isServer = serviceInfo.server?.id === player.id;
+    const isReceiver = serviceInfo.receiver?.id === player.id;
+    return { isRight, courtLabel, courtOddEven, isServer, isReceiver };
+  };
 
   // Touch gesture state for swiping
   const touchStartX = useRef<number | null>(null);
@@ -95,6 +231,51 @@ function ScoreboardContent() {
     if (!currentMatch) return null;
     return calculateMatchOdds(currentMatch, allHistoricalMatches, members);
   }, [currentMatch, allHistoricalMatches, members]);
+
+  // Active session players: get from stored selected players, or derive from players appearing in any match in this session
+  const activeSessionPlayerIds = useMemo(() => {
+    let storedIds: string[] | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('smashpoint_selected_players');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            storedIds = parsed;
+          }
+        }
+      } catch {}
+    }
+
+    const matchIds = new Set<string>();
+    matches.forEach((m) => {
+      if (m.team_a_player1_id) matchIds.add(m.team_a_player1_id);
+      if (m.team_a_player2_id) matchIds.add(m.team_a_player2_id);
+      if (m.team_b_player1_id) matchIds.add(m.team_b_player1_id);
+      if (m.team_b_player2_id) matchIds.add(m.team_b_player2_id);
+    });
+
+    if (storedIds) {
+      const validMemberIds = new Set(members.map((m) => m.id));
+      const filteredStored = storedIds.filter((id) => validMemberIds.has(id));
+      return new Set([...filteredStored, ...Array.from(matchIds)]);
+    }
+
+    return matchIds;
+  }, [matches, members]);
+
+  // Auto-open service setup modal if service values aren't set for the current round
+  useEffect(() => {
+    if (!loading && currentMatch) {
+      const cur = getServiceState(currentMatch);
+      if (!cur.isConfigured) {
+        setSetupServingTeam(cur.servingTeam || 'A');
+        setSetupTeamARightId(cur.teamARightPlayerId || currentMatch.team_a_player1_id || '');
+        setSetupTeamBRightId(cur.teamBRightPlayerId || currentMatch.team_b_player1_id || '');
+        setShowServiceSetupModal(true);
+      }
+    }
+  }, [currentIndex, loading, currentMatch?.id]);
 
   // Touch swipe handlers
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -161,6 +342,16 @@ function ScoreboardContent() {
       } catch {}
     }
 
+    // BWF Doubles Service tracking update
+    const curService = getServiceState(currentMatch);
+    if (delta > 0) {
+      const updatedService = applyPointScored(curService, team, nextA, nextB);
+      updateServiceState(currentMatch.id, updatedService);
+    } else if (delta < 0) {
+      const updatedService = applyPointUndone(curService);
+      updateServiceState(currentMatch.id, updatedService);
+    }
+
     // Optimistic UI update
     setMatches((prev) =>
       prev.map((m) =>
@@ -184,6 +375,13 @@ function ScoreboardContent() {
       next.delete(currentMatch.id);
       return next;
     });
+
+    const curService = getServiceState(currentMatch);
+    updateServiceState(currentMatch.id, {
+      ...curService,
+      servingTeam: targetA >= targetB ? 'A' : 'B',
+    });
+
     setMatches((prev) =>
       prev.map((m) =>
         m.id === currentMatch.id
@@ -201,6 +399,20 @@ function ScoreboardContent() {
 
   const handleResetScores = async () => {
     if (!currentMatch || isLocked) return;
+    const curService = getServiceState(currentMatch);
+    const resetService = createInitialServiceState({
+      teamAPlayer1Id: currentMatch.team_a_player1_id,
+      teamAPlayer2Id: currentMatch.team_a_player2_id,
+      teamBPlayer1Id: currentMatch.team_b_player1_id,
+      teamBPlayer2Id: currentMatch.team_b_player2_id,
+      firstServingTeam: 'A',
+      teamARightPlayerId: curService.teamARightPlayerId || currentMatch.team_a_player1_id,
+      teamBRightPlayerId: curService.teamBRightPlayerId || currentMatch.team_b_player1_id,
+    });
+    resetService.isConfigured = curService.isConfigured;
+    resetService.isLocked = curService.isLocked;
+    updateServiceState(currentMatch.id, resetService);
+
     setMatches((prev) =>
       prev.map((m) =>
         m.id === currentMatch.id
@@ -392,16 +604,23 @@ function ScoreboardContent() {
   const isMatchReopened = currentMatch ? reopenedMatchIds.has(currentMatch.id) : false;
   const isLocked = matchStatus.hasWon && !isMatchReopened; // Winner locked once won unless explicitly reopened
 
-  // Determine resting players for current match
-  const matchPlayerIds = [
-    currentMatch.team_a_player1_id,
-    currentMatch.team_a_player2_id,
-    currentMatch.team_b_player1_id,
-    currentMatch.team_b_player2_id,
-  ];
+
+  // Determine resting players for current match (excluding unselected squad members)
+  const matchPlayerIds = currentMatch
+    ? [
+        currentMatch.team_a_player1_id,
+        currentMatch.team_a_player2_id,
+        currentMatch.team_b_player1_id,
+        currentMatch.team_b_player2_id,
+      ]
+    : [];
   const restingMembers = members.filter(
-    (m) => !matchPlayerIds.includes(m.id)
+    (m) => activeSessionPlayerIds.has(m.id) && !matchPlayerIds.includes(m.id)
   );
+
+  // Live service and court position calculation
+  const currentService = currentMatch ? getServiceState(currentMatch) : null;
+  const serviceInfo = currentMatch && currentService ? calculateServiceAndCourts(currentMatch, currentService) : null;
 
   return (
     <div
@@ -566,6 +785,83 @@ function ScoreboardContent() {
                 </span>
               </div>
             )}
+
+            {/* Team A Court Boxes: Right Court (Even) | Left Court (Odd) -> Even to left side at top */}
+            {serviceInfo && (
+              <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                {/* Right Court (Even) */}
+                <div
+                  onClick={() => !currentService?.isLocked && handleSwapTeamCourt('A')}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between transition-all select-none ${
+                    currentService?.isLocked ? 'cursor-default' : 'cursor-pointer hover:border-slate-600 active:scale-95'
+                  } ${
+                    serviceInfo.teamA.right.isServer
+                      ? 'bg-emerald-500/25 border-emerald-500 ring-2 ring-emerald-500/40 shadow-sm shadow-emerald-950'
+                      : serviceInfo.teamA.right.isReceiver
+                      ? 'bg-amber-500/25 border-amber-500 ring-2 ring-amber-500/40 shadow-sm shadow-amber-950'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                  }`}
+                  title={currentService?.isLocked ? "Service locked (tap unlock icon in net bar to edit)" : "Tap to swap starting court"}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                      <span>Right Court</span>
+                      <span className="font-mono text-[8px] text-slate-500">(Even)</span>
+                    </div>
+                    <div className="font-bold text-slate-100 text-xs sm:text-sm truncate">
+                      {serviceInfo.teamA.right.player?.name || 'Player'}
+                    </div>
+                  </div>
+
+                  {serviceInfo.teamA.right.isServer && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 animate-pulse shadow-sm">
+                      🏸 Serve
+                    </span>
+                  )}
+                  {serviceInfo.teamA.right.isReceiver && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 shadow-sm">
+                      🎯 Recv
+                    </span>
+                  )}
+                </div>
+
+                {/* Left Court (Odd) */}
+                <div
+                  onClick={() => !currentService?.isLocked && handleSwapTeamCourt('A')}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between transition-all select-none ${
+                    currentService?.isLocked ? 'cursor-default' : 'cursor-pointer hover:border-slate-600 active:scale-95'
+                  } ${
+                    serviceInfo.teamA.left.isServer
+                      ? 'bg-emerald-500/25 border-emerald-500 ring-2 ring-emerald-500/40 shadow-sm shadow-emerald-950'
+                      : serviceInfo.teamA.left.isReceiver
+                      ? 'bg-amber-500/25 border-amber-500 ring-2 ring-amber-500/40 shadow-sm shadow-amber-950'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                  }`}
+                  title={currentService?.isLocked ? "Service locked (tap unlock icon in net bar to edit)" : "Tap to swap starting court"}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                      <span>Left Court</span>
+                      <span className="font-mono text-[8px] text-slate-500">(Odd)</span>
+                    </div>
+                    <div className="font-bold text-slate-100 text-xs sm:text-sm truncate">
+                      {serviceInfo.teamA.left.player?.name || 'Player'}
+                    </div>
+                  </div>
+
+                  {serviceInfo.teamA.left.isServer && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 animate-pulse shadow-sm">
+                      🏸 Serve
+                    </span>
+                  )}
+                  {serviceInfo.teamA.left.isReceiver && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 shadow-sm">
+                      🎯 Recv
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Big Score Stepper with Giant Touch Target */}
@@ -708,6 +1004,94 @@ function ScoreboardContent() {
             </div>
           )}
 
+          {/* Live Service Indicator Bar */}
+          {serviceInfo && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2 sm:p-2.5 shadow-lg backdrop-blur-md">
+              <div className="flex items-center justify-between gap-1.5 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2 py-1 rounded-xl text-[11px] font-bold truncate">
+                    <span>🏸</span>
+                    <span className="text-slate-400 font-normal">Server:</span>
+                    <span className="text-emerald-400 font-black truncate">{serviceInfo.server?.name || 'Server'}</span>
+                    <span className="text-[9px] font-mono text-emerald-400/80">({serviceInfo.servingCourt === 'RIGHT' ? 'Right' : 'Left'})</span>
+                  </div>
+
+                  <span className="text-slate-400 font-black text-xs px-0.5 select-none flex-shrink-0" title="Cross-court diagonal service">
+                    {serviceInfo.servingCourt === 'RIGHT' ? '⤡' : '⤢'}
+                  </span>
+
+                  <div className="flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 px-2 py-1 rounded-xl text-[11px] font-bold truncate">
+                    <span>🎯</span>
+                    <span className="text-slate-400 font-normal">Receiver:</span>
+                    <span className="text-amber-400 font-black truncate">{serviceInfo.receiver?.name || 'Receiver'}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Small Lock / Unlock button */}
+                  <button
+                    type="button"
+                    onClick={handleToggleServiceLock}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border active:scale-95 transition-all ${
+                      currentService?.isLocked
+                        ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        : 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm'
+                    }`}
+                    title={currentService?.isLocked ? "Service locked. Tap to unlock and edit" : "Service unlocked. Tap to lock"}
+                  >
+                    {currentService?.isLocked ? (
+                      <>
+                        <Lock className="w-3 h-3 text-emerald-400" />
+                        <span className="hidden xs:inline">Locked</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-3 h-3 text-amber-400 animate-pulse" />
+                        <span className="hidden xs:inline text-amber-300">Unlocked</span>
+                      </>
+                    )}
+                  </button>
+
+                  {!currentService?.isLocked ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleToggleServingTeam}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold flex items-center gap-1 border border-slate-700 active:scale-95 transition-all"
+                        title="Switch serving team"
+                      >
+                        <ArrowRightLeft className="w-3 h-3 text-cyan-400" />
+                        <span className="hidden sm:inline">Switch</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenServiceSetup}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 border border-emerald-500 active:scale-95 transition-all shadow-sm"
+                        title="Configure initial server & receiver"
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        <span>Setup</span>
+                      </button>
+                    </>
+                  ) : (
+                    !currentService?.isConfigured && scoreA === 0 && scoreB === 0 && (
+                      <button
+                        type="button"
+                        onClick={handleOpenServiceSetup}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 border border-emerald-500 active:scale-95 transition-all shadow-sm animate-pulse"
+                        title="Configure initial server & receiver"
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        <span>Set Server</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-center py-0.5">
             <div className="h-[1px] bg-slate-800 flex-1" />
             <span className="px-3 text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
@@ -771,6 +1155,83 @@ function ScoreboardContent() {
                 <span className="text-[10px] text-slate-400 font-mono hidden xs:inline">
                   Past: {odds.players.b1?.name} ({odds.players.b1?.gayRate}%) • {odds.players.b2?.name} ({odds.players.b2?.gayRate}%)
                 </span>
+              </div>
+            )}
+
+            {/* Team B Court Boxes: Left Court (Odd) | Right Court (Even) -> Even to right side at bottom */}
+            {serviceInfo && (
+              <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                {/* Left Court (Odd) - Column 1 is diagonal with Team A Left Court (Column 2) */}
+                <div
+                  onClick={() => !currentService?.isLocked && handleSwapTeamCourt('B')}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between transition-all select-none ${
+                    currentService?.isLocked ? 'cursor-default' : 'cursor-pointer hover:border-slate-600 active:scale-95'
+                  } ${
+                    serviceInfo.teamB.left.isServer
+                      ? 'bg-emerald-500/25 border-emerald-500 ring-2 ring-emerald-500/40 shadow-sm shadow-emerald-950'
+                      : serviceInfo.teamB.left.isReceiver
+                      ? 'bg-amber-500/25 border-amber-500 ring-2 ring-amber-500/40 shadow-sm shadow-amber-950'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                  }`}
+                  title={currentService?.isLocked ? "Service locked (tap unlock icon in net bar to edit)" : "Tap to swap starting court"}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                      <span>Left Court</span>
+                      <span className="font-mono text-[8px] text-slate-500">(Odd)</span>
+                    </div>
+                    <div className="font-bold text-slate-100 text-xs sm:text-sm truncate">
+                      {serviceInfo.teamB.left.player?.name || 'Player'}
+                    </div>
+                  </div>
+
+                  {serviceInfo.teamB.left.isServer && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 animate-pulse shadow-sm">
+                      🏸 Serve
+                    </span>
+                  )}
+                  {serviceInfo.teamB.left.isReceiver && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 shadow-sm">
+                      🎯 Recv
+                    </span>
+                  )}
+                </div>
+
+                {/* Right Court (Even) - Column 2 is diagonal with Team A Right Court (Column 1) */}
+                <div
+                  onClick={() => !currentService?.isLocked && handleSwapTeamCourt('B')}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between transition-all select-none ${
+                    currentService?.isLocked ? 'cursor-default' : 'cursor-pointer hover:border-slate-600 active:scale-95'
+                  } ${
+                    serviceInfo.teamB.right.isServer
+                      ? 'bg-emerald-500/25 border-emerald-500 ring-2 ring-emerald-500/40 shadow-sm shadow-emerald-950'
+                      : serviceInfo.teamB.right.isReceiver
+                      ? 'bg-amber-500/25 border-amber-500 ring-2 ring-amber-500/40 shadow-sm shadow-amber-950'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                  }`}
+                  title={currentService?.isLocked ? "Service locked (tap unlock icon in net bar to edit)" : "Tap to swap starting court"}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                      <span>Right Court</span>
+                      <span className="font-mono text-[8px] text-slate-500">(Even)</span>
+                    </div>
+                    <div className="font-bold text-slate-100 text-xs sm:text-sm truncate">
+                      {serviceInfo.teamB.right.player?.name || 'Player'}
+                    </div>
+                  </div>
+
+                  {serviceInfo.teamB.right.isServer && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 animate-pulse shadow-sm">
+                      🏸 Serve
+                    </span>
+                  )}
+                  {serviceInfo.teamB.right.isReceiver && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-slate-950 flex items-center gap-0.5 flex-shrink-0 shadow-sm">
+                      🎯 Recv
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -925,6 +1386,16 @@ function ScoreboardContent() {
           )}
         </button>
       </div>
+
+      {/* Service Setup Modal */}
+      {currentMatch && (
+        <ServiceSetupModal
+          isOpen={showServiceSetupModal}
+          onClose={() => setShowServiceSetupModal(false)}
+          match={currentMatch}
+          onSave={handleSaveServiceSetup}
+        />
+      )}
     </div>
   );
 }

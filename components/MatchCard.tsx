@@ -23,6 +23,15 @@ import {
   X
 } from 'lucide-react';
 import Link from 'next/link';
+import ServiceSetupModal from '@/components/ServiceSetupModal';
+import { 
+  isMatchServiceConfigured, 
+  saveServiceState, 
+  getSavedServiceState, 
+  applyPointScored, 
+  applyPointUndone, 
+  MatchServiceState 
+} from '@/lib/serviceTracker';
 
 interface MatchCardProps {
   match: MatchWithPlayers;
@@ -46,6 +55,12 @@ export default function MatchCard({
   const [showMarkWinner, setShowMarkWinner] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isReopened, setIsReopened] = useState(false);
+  const [showServiceSetupModal, setShowServiceSetupModal] = useState(false);
+  const [pendingScoreAction, setPendingScoreAction] = useState<
+    | { type: 'QUICK_ADD'; team: 'A' | 'B'; delta: number }
+    | { type: 'MARK_WINNER'; chosenWinner: WinningTeam }
+    | null
+  >(null);
 
   // Dynamic Gay Rate odds calculation based on past matches
   const odds: MatchOdds | null = useMemo(() => {
@@ -59,37 +74,7 @@ export default function MatchCard({
   const hasTeamBWon = status.hasWon && status.winner === 'TEAM_B';
   const isLocked = status.hasWon && !isReopened; // Winner locked once won unless explicitly reopened
 
-  const handleQuickAddScore = async (e: React.MouseEvent, team: 'A' | 'B', delta: number) => {
-    e.stopPropagation();
-    if (isLocked) return; // Locked: must click Reopen first
-
-    const nextA = team === 'A' ? Math.max(0, match.score_team_a + delta) : match.score_team_a;
-    const nextB = team === 'B' ? Math.max(0, match.score_team_b + delta) : match.score_team_b;
-
-    // Check if score satisfies natural badminton win (21+ points with 2 lead, or 30 max)
-    const naturalWin = isNaturalBadmintonWin(nextA, nextB);
-    let winner: WinningTeam = 'PENDING';
-
-    if (naturalWin.won && naturalWin.winner) {
-      winner = naturalWin.winner;
-      setIsReopened(false);
-      setIsExpanded(false); // Automatically lock and minimize on victory!
-    } else {
-      setIsReopened(false);
-    }
-
-    await onSaveScore(match.id, nextA, nextB, winner);
-  };
-
-  const handleMarkWinner = async (chosenWinner: WinningTeam) => {
-    setShowMarkWinner(false);
-    if (chosenWinner === 'PENDING') {
-      setIsReopened(true);
-      setIsExpanded(true); // Keep open after reopening so user can edit scores
-      await onSaveScore(match.id, match.score_team_a, match.score_team_b, 'PENDING');
-      return;
-    }
-
+  const executeMarkWinner = async (chosenWinner: WinningTeam) => {
     setIsReopened(false);
 
     let nextA = match.score_team_a;
@@ -109,6 +94,77 @@ export default function MatchCard({
     }
 
     await onSaveScore(match.id, nextA, nextB, chosenWinner);
+  };
+
+  const handleSaveService = async (newState: MatchServiceState) => {
+    saveServiceState(match.id, newState);
+    setPendingScoreAction(null);
+    setShowServiceSetupModal(false);
+  };
+
+  const handleCloseServiceModal = () => {
+    setPendingScoreAction(null);
+    setShowServiceSetupModal(false);
+  };
+
+  const handleQuickAddScore = async (e: React.MouseEvent, team: 'A' | 'B', delta: number) => {
+    e.stopPropagation();
+    if (isLocked) return; // Locked: must click Reopen first
+
+    // Intercept if match hasn't had service tracker configured yet and user is adding points
+    if (delta > 0 && !isMatchServiceConfigured(match.id)) {
+      setPendingScoreAction({ type: 'QUICK_ADD', team, delta });
+      setShowServiceSetupModal(true);
+      return;
+    }
+
+    const nextA = team === 'A' ? Math.max(0, match.score_team_a + delta) : match.score_team_a;
+    const nextB = team === 'B' ? Math.max(0, match.score_team_b + delta) : match.score_team_b;
+
+    // Check if score satisfies natural badminton win (21+ points with 2 lead, or 30 max)
+    const naturalWin = isNaturalBadmintonWin(nextA, nextB);
+    let winner: WinningTeam = 'PENDING';
+
+    if (naturalWin.won && naturalWin.winner) {
+      winner = naturalWin.winner;
+      setIsReopened(false);
+      setIsExpanded(false); // Automatically lock and minimize on victory!
+    } else {
+      setIsReopened(false);
+    }
+
+    // Keep live service tracker in sync if configured
+    const curService = getSavedServiceState(match.id);
+    if (curService && curService.isConfigured) {
+      if (delta > 0) {
+        const updated = applyPointScored(curService, team, nextA, nextB);
+        saveServiceState(match.id, updated);
+      } else if (delta < 0) {
+        const updated = applyPointUndone(curService);
+        saveServiceState(match.id, updated);
+      }
+    }
+
+    await onSaveScore(match.id, nextA, nextB, winner);
+  };
+
+  const handleMarkWinner = async (chosenWinner: WinningTeam) => {
+    setShowMarkWinner(false);
+    if (chosenWinner === 'PENDING') {
+      setIsReopened(true);
+      setIsExpanded(true); // Keep open after reopening so user can edit scores
+      await onSaveScore(match.id, match.score_team_a, match.score_team_b, 'PENDING');
+      return;
+    }
+
+    // Intercept if match hasn't had service tracker configured yet
+    if (!isMatchServiceConfigured(match.id)) {
+      setPendingScoreAction({ type: 'MARK_WINNER', chosenWinner });
+      setShowServiceSetupModal(true);
+      return;
+    }
+
+    await executeMarkWinner(chosenWinner);
   };
 
   const handleConfirmDelete = async (e: React.MouseEvent) => {
@@ -524,6 +580,22 @@ export default function MatchCard({
               </div>
             )}
 
+            {/* Set Server Button if unconfigured at 0-0 */}
+            {!isMatchServiceConfigured(match.id) && match.score_team_a === 0 && match.score_team_b === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingScoreAction(null);
+                  setShowServiceSetupModal(true);
+                }}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-cyan-400 hover:text-white bg-cyan-500/10 hover:bg-cyan-600/30 border border-cyan-500/30 transition-colors flex items-center gap-1 active:scale-95 shadow-sm"
+                title="Configure who serves first without adding points"
+              >
+                <span>🏸</span>
+                <span>Set Server</span>
+              </button>
+            )}
+
             {/* Scoreboard Link */}
             <Link
               href={`/scoreboard?matchId=${match.id}`}
@@ -535,6 +607,18 @@ export default function MatchCard({
           </div>
         </div>
       </div>
+
+      {/* Service Setup Modal when marking scores */}
+      {showServiceSetupModal && (
+        <ServiceSetupModal
+          isOpen={showServiceSetupModal}
+          onClose={handleCloseServiceModal}
+          match={match}
+          onSave={handleSaveService}
+          title={`Round ${match.round_number} • Track Server & Receiver`}
+          description="Select initial server & receiver before marking score"
+        />
+      )}
     </div>
   );
 }
